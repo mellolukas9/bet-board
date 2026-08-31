@@ -37,6 +37,20 @@ function baseUrl(): string {
   return typeof window === "undefined" ? SERVER_API_BASE_URL : API_BASE_URL;
 }
 
+/**
+ * Mensagem para quando o `fetch` estoura antes de haver resposta.
+ *
+ * As duas causas possíveis são indistinguíveis no navegador, então a mensagem
+ * nomeia as duas em vez de afirmar a errada com confiança.
+ */
+function errorDeRede(): string {
+  return (
+    `Não foi possível falar com o backend em ${baseUrl()}. ` +
+    "Ou ele está fora do ar, ou o endereço deste painel não está liberado no " +
+    "CORS_ORIGINS dele."
+  );
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -92,8 +106,11 @@ export async function apiFetch<T>(
       },
     });
   } catch {
-    // rede fora / backend não responde — o chamador decide como exibir
-    throw new ApiError(`Não foi possível alcançar o backend em ${baseUrl()}`);
+    // O navegador entrega a mesma exceção opaca para rede fora e para resposta
+    // bloqueada por CORS — não dá para distinguir daqui. A mensagem cita as
+    // duas porque, em produção, CORS mal configurado é de longe a mais comum, e
+    // a mensagem antiga mandava procurar o problema no lugar errado.
+    throw new ApiError(errorDeRede());
   }
 
   if (response.status === 401) handleExpiredSession(token !== null);
@@ -172,7 +189,7 @@ async function postImage<T>(path: string, file: File): Promise<T> {
       headers: authHeader(),
     });
   } catch {
-    throw new ApiError(`Não foi possível alcançar o backend em ${API_BASE_URL}`);
+    throw new ApiError(errorDeRede());
   }
 
   if (response.status === 401) handleExpiredSession(getToken() !== null);
