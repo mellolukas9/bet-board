@@ -14,7 +14,7 @@ from app.services.messaging.formatter import (
 
 COMPLETE = TipExtracted(
     source="bet365",
-    event="Flamengo x Palmeiras",
+    matches=["Flamengo x Palmeiras"],
     market="Mais de 2.5 gols",
     odd=1.85,
     stake=150.0,

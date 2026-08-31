@@ -43,6 +43,7 @@ def format_units(units: float | Decimal) -> str:
 def format_tip_message(
     tip: TipExtracted,
     *,
+    event: str | None = None,
     stake_units: float | Decimal | None = None,
     link: str | None = None,
 ) -> str:
@@ -57,11 +58,15 @@ def format_tip_message(
 
     ``link`` é o bilhete na casa de apostas, quando o admin informou: com ele o
     assinante abre a mesma aposta em vez de remontá-la campo a campo.
+
+    ``event`` sobrepõe o nome derivado da leitura — é por onde entra o que o
+    admin corrigiu à mão na revisão.
     """
     linhas = ["🎯 *NOVA TIP*", ""]
 
-    if tip.event:
-        linhas.append(f"⚽ {tip.event}")
+    nome = event if event is not None else tip.event
+    if nome:
+        linhas.append(f"⚽ {nome}")
     if tip.market:
         linhas.append(f"📊 {tip.market}")
     if tip.odd is not None:

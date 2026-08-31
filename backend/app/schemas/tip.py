@@ -1,12 +1,43 @@
 """Schemas Pydantic da tip."""
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from app.models.tip import Channel, MessageStatus, TipStatus
+
+#: "Dupla: ", "Múltipla - ", "Tripla — "… no começo do mercado.
+_PREFIXO_DE_BILHETE = re.compile(
+    r"^\s*(simples|dupla|tripla|qu[áa]drupla|m[úu]ltipla|acumulada)\s*[:\-–—]\s*",
+    re.IGNORECASE,
+)
+
+
+def nome_do_evento(matches: list[str] | None) -> str | None:
+    """O nome do evento a partir das partidas do bilhete.
+
+    Um jogo vira o nome do jogo; daí para cima vira o tipo da aposta, que é
+    como o grupo se refere a ela. Partidas repetidas contam uma vez só: uma
+    múltipla com três seleções do mesmo jogo continua sendo aquele jogo.
+    """
+    if not matches:
+        return None
+
+    # dict.fromkeys tira repetição preservando a ordem de leitura do print
+    unicas = [m.strip() for m in dict.fromkeys(matches) if m and m.strip()]
+
+    if not unicas:
+        return None
+    if len(unicas) == 1:
+        return unicas[0]
+    if len(unicas) == 2:
+        return "Dupla"
+    if len(unicas) == 3:
+        return "Tripla"
+    return "Múltipla"
 
 
 class TipExtracted(BaseModel):
@@ -24,20 +55,52 @@ class TipExtracted(BaseModel):
     source: str | None = Field(
         description="Casa de apostas ou origem da tip (ex: Bet365, Betano). null se não aparecer."
     )
-    event: str | None = Field(
+    matches: list[str] | None = Field(
         description=(
-            "A partida, no formato 'Time A x Time B'. Em múltipla com jogos "
-            "diferentes, todos separados por ' / '. NUNCA o tipo da aposta "
-            "('Dupla', 'Tripla', 'Múltipla') — isso vai em market. "
-            "null se não aparecer."
+            "As partidas do bilhete, no formato 'Time A x Time B', uma por "
+            "seleção e na ordem em que aparecem. Várias seleções da mesma "
+            "partida repetem a partida. NUNCA use aqui o tipo da aposta "
+            "('Dupla', 'Tripla', 'Múltipla'). null se não aparecer nenhuma."
         )
     )
     market: str | None = Field(
         description=(
             "Mercado apostado exatamente como no print (ex: 'Over 2.5 gols', "
-            "'Vitória Time A', 'Ambas marcam'). null se não aparecer."
+            "'Vitória Time A', 'Ambas marcam'). Em múltipla, as seleções "
+            "separadas por ' + '. NÃO comece com 'Dupla:', 'Tripla:' nem "
+            "'Múltipla:' — o tipo da aposta já vai no evento. "
+            "null se não aparecer."
         )
     )
+
+    @field_validator("market")
+    @classmethod
+    def _sem_prefixo_de_bilhete(cls, valor: str | None) -> str | None:
+        """Tira o "Dupla: " / "Múltipla - " da frente do mercado.
+
+        O tipo da aposta já é o nome do evento; repeti-lo aqui deixa a mensagem
+        do grupo com a mesma palavra em duas linhas seguidas. O prompt pede para
+        não prefixar, mas modelo de visão varia — e a mensagem vai para o grupo.
+        """
+        if valor is None:
+            return None
+        return _PREFIXO_DE_BILHETE.sub("", valor).strip() or None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def event(self) -> str | None:
+        """Nome do evento, derivado da quantidade de partidas.
+
+        Contar é operação determinística: fazer em código, e não pedir à IA,
+        tira uma fonte de variação de um campo que é obrigatório para publicar.
+        O admin pode reescrever depois — o valor derivado é só o ponto de
+        partida.
+
+        É `computed_field` para sair na resposta da API sem entrar no schema
+        que vai para a IA: structured outputs usam o schema de validação, e
+        campo computado não aparece nele.
+        """
+        return nome_do_evento(self.matches)
     odd: float | None = Field(
         description="Cotação em formato decimal (ex: 1.85). null se não aparecer."
     )

@@ -293,7 +293,12 @@ def publish_tip(
         )
 
     text = format_tip_message(
-        _as_extracted(tip), stake_units=tip.stake_units, link=tip.link
+        _as_extracted(tip),
+        # o evento vem da tip, não da leitura: é ele que o admin pode ter
+        # corrigido na revisão
+        event=tip.event,
+        stake_units=tip.stake_units,
+        link=tip.link,
     )
     logs = dispatch_tip_message(
         session,
@@ -325,7 +330,9 @@ def _as_extracted(tip: Tip) -> TipExtracted:
     """Adapta a tip do banco para o schema que o formatter consome."""
     return TipExtracted(
         source=tip.source,
-        event=tip.event,
+        # `matches` só existe na leitura do print; o nome do evento já está
+        # gravado na tip e vai para o formatter por fora
+        matches=None,
         market=tip.market,
         odd=float(tip.odd) if tip.odd is not None else None,
         stake=float(tip.stake) if tip.stake is not None else None,

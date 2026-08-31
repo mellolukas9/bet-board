@@ -15,7 +15,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 COMPLETE = TipExtracted(
     source="Bet365",
-    event="Flamengo x Palmeiras",
+    matches=["Flamengo x Palmeiras"],
     market="Over 2.5 gols",
     odd=1.85,
     stake=50.0,
