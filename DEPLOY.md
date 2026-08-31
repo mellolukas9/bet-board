@@ -205,3 +205,8 @@ valor fica no banco, por banca.
 | Primeira requisição do dia demora 40s | O plano gratuito do Render hibernou. É isso mesmo. |
 | `/admin` responde "página não encontrada" | A conta não é administradora. Confira `SUPERUSER_USERNAME` nos logs do primeiro deploy. |
 | Deploy sobe mas as tabelas não existem | O `start.sh` não rodou — confira se o `CMD` do Dockerfile foi sobrescrito no painel do Render. |
+| Build da Vercel: `ENOENT … next-server.js.nft.json` | `output: "standalone"` ligado na Vercel. Ele é para Docker; lá é desligado por `process.env.VERCEL` no `next.config.ts`. |
+
+> **Ao ler um log de build da Vercel, confira o commit na primeira linha**
+> (`Cloning … Commit: abc1234`). É fácil analisar o log de um build anterior ao
+> que se quer testar e concluir que a correção não funcionou.
