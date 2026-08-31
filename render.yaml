@@ -48,12 +48,21 @@ services:
         sync: false
 
       # IA de visão que lê o print da tip.
+      #
+      # Provedor e modelo são `sync: false` de propósito. Com um valor fixo
+      # aqui, trocar o provedor pelo painel do Render funcionaria até a próxima
+      # sincronização do blueprint, que silenciosamente devolveria o antigo —
+      # e a tip voltaria a ser lida pelo modelo errado sem ninguém mexer em nada.
+      #
+      #   gemini    -> VISION_MODEL=models/gemini-3.5-flash-lite
+      #   anthropic -> VISION_MODEL=claude-haiku-4-5-20251001
       - key: VISION_PROVIDER
-        value: gemini
+        sync: false
       - key: VISION_API_KEY
         sync: false
       - key: VISION_MODEL
-        value: models/gemini-3.5-flash-lite
+        sync: false
+      # Só o Gemini usa; no Anthropic é ignorado.
       - key: VISION_MEDIA_RESOLUTION
         value: low
       - key: VISION_TIMEOUT_SECONDS
