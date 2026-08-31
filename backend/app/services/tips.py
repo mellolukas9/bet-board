@@ -28,6 +28,15 @@ logger = get_logger(__name__)
 #: ``stake_units`` entra na lista porque só o admin sabe convertê-lo.
 REQUIRED_TO_PUBLISH: tuple[str, ...] = ("event", "market", "odd", "stake_units")
 
+#: Nome de coluna não é nome de campo na tela. O admin lê "unidades", não
+#: "stake_units" — e essa mensagem chega até ele, no 409 do publish.
+ROTULOS: dict[str, str] = {
+    "event": "evento",
+    "market": "mercado",
+    "odd": "odd",
+    "stake_units": "unidades",
+}
+
 
 class TipNotPublishable(RuntimeError):
     """A tip ainda não tem o que a mensagem precisa, ou já foi publicada."""
@@ -269,8 +278,9 @@ def publish_tip(
     """
     missing = missing_to_publish(tip)
     if missing:
+        faltando = ", ".join(ROTULOS.get(campo, campo) for campo in missing)
         raise TipNotPublishable(
-            "A tip ainda não pode ser publicada. Faltam: " + ", ".join(missing) + "."
+            f"A tip ainda não pode ser publicada. Falta preencher: {faltando}."
         )
     if was_published(tip) and not force:
         raise TipNotPublishable(
@@ -282,7 +292,9 @@ def publish_tip(
             "TELEGRAM_CHAT_ID no .env."
         )
 
-    text = format_tip_message(_as_extracted(tip), stake_units=tip.stake_units)
+    text = format_tip_message(
+        _as_extracted(tip), stake_units=tip.stake_units, link=tip.link
+    )
     logs = dispatch_tip_message(
         session,
         tip_id=tip.id,

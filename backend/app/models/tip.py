@@ -63,6 +63,11 @@ class Tip(Base, TimestampMixin):
     # revisão (PATCH), não pela IA, e a tip não é publicável enquanto for null.
     stake_units: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
 
+    # Link da aposta na casa (o "compartilhar bilhete" da Bet365/Betano). Vem do
+    # admin, nunca da IA: não está no print. Vai na mensagem do grupo, para o
+    # assinante abrir a mesma aposta em vez de remontá-la à mão.
+    link: Mapped[str | None] = mapped_column(String(512))
+
     raw_image_ref: Mapped[str | None] = mapped_column(String(512))
 
     # O print em si, para ir junto com a mensagem no grupo. Fica no banco (e não

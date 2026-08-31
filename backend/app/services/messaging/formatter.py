@@ -41,7 +41,10 @@ def format_units(units: float | Decimal) -> str:
 
 
 def format_tip_message(
-    tip: TipExtracted, *, stake_units: float | Decimal | None = None
+    tip: TipExtracted,
+    *,
+    stake_units: float | Decimal | None = None,
+    link: str | None = None,
 ) -> str:
     """Monta a mensagem padrão da tip.
 
@@ -51,6 +54,9 @@ def format_tip_message(
     O grupo trabalha em unidades, então ``stake_units`` (informado pelo admin na
     revisão) manda no stake. Sem ele a mensagem cai no valor em reais lido do
     print — é o que o ``/tips/preview`` mostra, antes de existir a revisão.
+
+    ``link`` é o bilhete na casa de apostas, quando o admin informou: com ele o
+    assinante abre a mesma aposta em vez de remontá-la campo a campo.
     """
     linhas = ["🎯 *NOVA TIP*", ""]
 
@@ -66,6 +72,8 @@ def format_tip_message(
         linhas.append(f"💰 Stake: {format_money(tip.stake, tip.currency)}")
     if tip.source:
         linhas.append(f"🏠 {tip.source}")
+    if link:
+        linhas.extend(["", f"🔗 Entrar na aposta: {link}"])
 
     linhas.extend(["", "🍀 Boa sorte!"])
     return "\n".join(linhas)

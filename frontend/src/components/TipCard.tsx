@@ -15,9 +15,15 @@ const EDITAVEIS = [
   ["stake_units", "Unidades", "2"],
   ["source", "Casa", "Bet365"],
   ["stake", "Stake (R$)", "150.00"],
+  ["link", "Link da aposta", "https://bet365.com/..."],
 ] as const;
 
 type Campo = (typeof EDITAVEIS)[number][0];
+
+/** Rótulo de tela para cada campo — o aviso não pode falar "stake_units". */
+const ROTULOS: Record<string, string> = Object.fromEntries(
+  EDITAVEIS.map(([campo, rotulo]) => [campo, rotulo.toLowerCase()]),
+);
 
 /** Casas que o grupo usa. A IA lê o nome do print, mas aqui é lista fechada. */
 const CASAS = ["Bet365", "Betano"] as const;
@@ -81,7 +87,13 @@ export function TipCard({
   const pendentes = faltando(tip);
   const publicavel = pendentes.length === 0;
   const publicada = jaPublicada(tip);
-  const temRascunho = Object.keys(rascunho).length > 0;
+
+  // Compara o valor, não a presença da chave: digitar e desfazer voltava a
+  // contar como alteração, e o botão dizia "Salvar" sem ter o que salvar.
+  const alterados = Object.entries(rascunho).filter(
+    ([campo, texto]) => texto !== (tip[campo as Campo] ?? ""),
+  );
+  const temRascunho = alterados.length > 0;
 
   /** Valor exibido: o que o admin digitou, ou o que veio do banco. */
   function valor(campo: Campo): string {
@@ -89,9 +101,6 @@ export function TipCard({
   }
 
   async function salvar() {
-    const alterados = Object.entries(rascunho).filter(
-      ([campo, texto]) => texto !== (tip[campo as Campo] ?? ""),
-    );
     if (alterados.length === 0) {
       setRascunho({});
       return;
@@ -226,7 +235,11 @@ export function TipCard({
         {EDITAVEIS.map(([campo, label, exemplo]) => {
           const obrigatorio = (OBRIGATORIOS as readonly string[]).includes(campo);
           return (
-            <label key={campo} className="block text-sm">
+            <label
+              key={campo}
+              // o link é longo demais para meia largura
+              className={`block text-sm ${campo === "link" ? "sm:col-span-2" : ""}`}
+            >
               <span className="text-muted">
                 {label}
                 {obrigatorio && tip[campo] === null && (
@@ -253,6 +266,9 @@ export function TipCard({
                 <input
                   value={valor(campo)}
                   placeholder={exemplo}
+                  type={campo === "link" ? "url" : "text"}
+                  inputMode={campo === "link" ? "url" : undefined}
+                  spellCheck={campo === "link" ? false : undefined}
                   disabled={publicada}
                   onChange={(e) =>
                     setRascunho((atual) => ({ ...atual, [campo]: e.target.value }))
@@ -267,7 +283,8 @@ export function TipCard({
 
       {!publicavel && !publicada && (
         <p className="mt-3 text-sm text-amber">
-          Falta preencher para publicar: {pendentes.join(", ")}.
+          Falta preencher para publicar:{" "}
+          {pendentes.map((campo) => ROTULOS[campo] ?? campo).join(", ")}.
         </p>
       )}
 
@@ -282,14 +299,21 @@ export function TipCard({
           Uma tentativa que só falhou não conta — aí o card segue editável. */}
       {!publicada && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void salvar()}
-            disabled={!temRascunho || salvando}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted transition hover:bg-white/5 hover:text-white disabled:opacity-40"
-          >
-            {salvando ? "Salvando…" : "Salvar"}
-          </button>
+          {/* Antes o botão ficava cinza e clicável-mas-não quando não havia o
+              que salvar, e lido de fora parecia quebrado. Agora ele só existe
+              quando há alteração; sem ela, o lugar dele diz que está salvo. */}
+          {temRascunho ? (
+            <button
+              type="button"
+              onClick={() => void salvar()}
+              disabled={salvando}
+              className="rounded-lg border border-accent/50 bg-accent/15 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent/25 disabled:opacity-40"
+            >
+              {salvando ? "Salvando…" : `Salvar ${alterados.length} alteração${alterados.length > 1 ? "ões" : ""}`}
+            </button>
+          ) : (
+            <span className="px-1 text-sm text-muted">✓ salvo</span>
+          )}
 
           <button
             type="button"
@@ -301,8 +325,8 @@ export function TipCard({
           </button>
 
           {temRascunho && (
-            <span className="text-xs text-muted">
-              salve as alterações antes de publicar
+            <span className="text-xs text-amber">
+              salve antes de publicar
             </span>
           )}
         </div>

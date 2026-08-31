@@ -37,6 +37,8 @@ export type TipRead = {
   /** null até o admin informar — a IA nunca preenche */
   stake_units: string | null;
   currency: string;
+  /** link do bilhete na casa; vai na mensagem do grupo */
+  link: string | null;
   raw_image_ref: string | null;
   status: TipStatus;
   needs_review: boolean;
@@ -58,6 +60,7 @@ export type TipUpdate = {
   stake?: string | null;
   stake_units?: string | null;
   currency?: string | null;
+  link?: string | null;
   status?: TipStatus;
   needs_review?: boolean;
 };

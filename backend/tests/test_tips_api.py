@@ -366,7 +366,10 @@ def test_refuses_to_publish_without_the_units(client, bankroll, use_extractor, u
     response = client.post(f"/tips/{tip_id}/publish")
 
     assert response.status_code == 409
-    assert "stake_units" in response.json()["detail"]
+    # a mensagem chega ao admin: fala "unidades", não o nome da coluna
+    detail = response.json()["detail"]
+    assert "unidades" in detail
+    assert "stake_units" not in detail
 
 
 def test_refuses_to_publish_a_tip_that_was_not_read(
@@ -382,7 +385,8 @@ def test_refuses_to_publish_a_tip_that_was_not_read(
 
     detail = client.post(f"/tips/{tip_id}/publish").json()["detail"]
 
-    assert "event" in detail and "market" in detail and "odd" in detail
+    assert "evento" in detail and "mercado" in detail and "odd" in detail
+    assert "stake_units" not in detail
 
 
 def test_does_not_publish_the_same_tip_twice(client, bankroll, use_extractor, use_senders) -> None:
@@ -564,3 +568,54 @@ def test_published_tip_can_be_marked(client, bankroll, use_extractor, use_sender
     assert response.status_code == 200
     assert response.json()["status"] == "green"
     assert client.get(f"/bankrolls/{bankroll.id}/stats").json()["green"] == 1
+
+
+# --- link da aposta ---------------------------------------------------------
+
+
+def test_link_goes_into_the_group_message(client, bankroll, use_extractor, use_senders) -> None:
+    """O assinante abre a mesma aposta em vez de remontá-la campo a campo."""
+    use_extractor(COMPLETE)
+    sender = FakeSender(Channel.TELEGRAM)
+    use_senders(sender)
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+    client.patch(f"/tips/{tip_id}", json={"link": "https://bet365.com/bilhete/abc"})
+
+    client.post(f"/tips/{tip_id}/publish")
+
+    assert "https://bet365.com/bilhete/abc" in sender.sent[0]
+
+
+def test_tip_without_link_still_publishes(client, bankroll, use_extractor, use_senders) -> None:
+    """O link é opcional: sem ele a mensagem sai igual, só sem o atalho."""
+    use_extractor(COMPLETE)
+    sender = FakeSender(Channel.TELEGRAM)
+    use_senders(sender)
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+
+    response = client.post(f"/tips/{tip_id}/publish")
+
+    assert response.status_code == 200
+    assert "Entrar na aposta" not in sender.sent[0]
+
+
+def test_link_without_scheme_is_refused(client, bankroll, use_extractor) -> None:
+    """"bet365.com/abc" vira texto morto no Telegram — o assinante só descobre clicando."""
+    use_extractor(COMPLETE)
+    tip_id = create_tip(client, bankroll).json()["id"]
+
+    response = client.patch(f"/tips/{tip_id}", json={"link": "bet365.com/abc"})
+
+    assert response.status_code == 422
+
+
+def test_empty_link_clears_the_field(client, bankroll, use_extractor) -> None:
+    use_extractor(COMPLETE)
+    tip_id = create_tip(client, bankroll).json()["id"]
+    client.patch(f"/tips/{tip_id}", json={"link": "https://bet365.com/x"})
+
+    body = client.patch(f"/tips/{tip_id}", json={"link": ""}).json()
+
+    assert body["link"] is None

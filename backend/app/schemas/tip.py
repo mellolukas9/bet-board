@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.tip import Channel, MessageStatus, TipStatus
 
@@ -95,6 +95,7 @@ class TipRead(BaseModel):
     stake: Decimal | None
     stake_units: Decimal | None
     currency: str
+    link: str | None
     raw_image_ref: str | None
     status: TipStatus
     needs_review: bool
@@ -122,8 +123,32 @@ class TipUpdate(BaseModel):
     stake: Decimal | None = None
     stake_units: Decimal | None = Field(default=None, ge=0)
     currency: str | None = None
+    link: str | None = Field(
+        default=None,
+        max_length=512,
+        description="Link da aposta na casa. Vai na mensagem do grupo.",
+    )
     status: TipStatus | None = None
     needs_review: bool | None = None
+
+    @field_validator("link")
+    @classmethod
+    def _link_utilizavel(cls, valor: str | None) -> str | None:
+        """Recusa link que não abre.
+
+        A mensagem vai para o grupo inteiro; um "bet365.com/abc" sem esquema
+        vira texto morto no Telegram, e o assinante só descobre clicando.
+        String vazia limpa o campo.
+        """
+        if valor is None:
+            return None
+
+        limpo = valor.strip()
+        if not limpo:
+            return None
+        if not limpo.startswith(("http://", "https://")):
+            raise ValueError("O link precisa começar com http:// ou https://.")
+        return limpo
 
 
 class TipResult(BaseModel):

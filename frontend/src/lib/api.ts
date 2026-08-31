@@ -136,10 +136,29 @@ export async function apiFetch<T>(
  * qual campo falta, e no 502 diz o que o provedor de visão respondeu.
  */
 async function detailOf(response: Response): Promise<string | null> {
-  return response
-    .json()
-    .then((b) => (typeof b?.detail === "string" ? b.detail : null))
-    .catch(() => null);
+  const body = await response.json().catch(() => null);
+  if (body === null) return null;
+
+  // 4xx do nosso código: `detail` é a frase pronta
+  if (typeof body.detail === "string") return body.detail;
+
+  // 422 do FastAPI: `detail` é a lista de erros de validação. Sem tratar este
+  // caso, a tela mostrava "PATCH /tips/20 falhou (422)" e engolia a explicação
+  // que o schema tinha escrito.
+  if (Array.isArray(body.detail)) {
+    const mensagens = body.detail
+      .map((erro: { msg?: unknown }) =>
+        typeof erro?.msg === "string"
+          ? // o Pydantic prefixa validador próprio com "Value error, "
+            erro.msg.replace(/^Value error,\s*/, "")
+          : null,
+      )
+      .filter((m: string | null): m is string => Boolean(m));
+
+    if (mensagens.length > 0) return mensagens.join(" ");
+  }
+
+  return null;
 }
 
 export function getHealth(): Promise<HealthResponse> {
