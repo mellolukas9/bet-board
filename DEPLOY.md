@@ -16,6 +16,17 @@ Três serviços, porque nenhum deles faz bem o trabalho dos outros:
 
 ---
 
+## 0. Antes de tudo: o código precisa estar na `main`
+
+A Vercel e o Render fazem deploy a partir da branch de produção do repositório,
+que é a `main`. O código está na branch **`deploy-inicial`**, aguardando revisão.
+
+Faça o merge do PR antes de seguir — ou, se quiser publicar sem merge, aponte os
+dois serviços para `deploy-inicial` (Vercel: *Settings → Git → Production
+Branch*; Render: campo *Branch* do serviço).
+
+---
+
 ## 1. Banco na Neon
 
 1. <https://neon.tech> → **New Project**, região mais perto do Render
@@ -31,6 +42,11 @@ Três serviços, porque nenhum deles faz bem o trabalho dos outros:
 > **Não precisa trocar o `postgresql://` por `postgresql+psycopg://`.** O
 > backend normaliza o prefixo sozinho — é o erro de deploy mais fácil de
 > cometer, então ele foi resolvido no código (`app/config.py`).
+
+> **O banco gratuito da Neon hiberna** depois de ~5 minutos parado. Somado à
+> hibernação do Render, a primeira visita do dia pode levar quase um minuto. O
+> `pool_pre_ping` do SQLAlchemy já lida com a conexão que caiu no meio; o que
+> sobra é a espera.
 
 > **O `?sslmode=require` é obrigatório** e já vem na string da Neon. Não tire.
 
@@ -182,6 +198,7 @@ valor fica no banco, por banca.
 
 | Sintoma | Causa quase sempre |
 |---|---|
+| O deploy sobe uma versão antiga | O serviço aponta para `main` e o código está em `deploy-inicial` |
 | `/health` diz `database: "down"` | `DATABASE_URL` errada, ou faltou `?sslmode=require` |
 | Painel diz "Não foi possível alcançar o backend" | `NEXT_PUBLIC_API_BASE_URL` errada — e lembre que ela é embutida no build |
 | Login falha com erro de CORS no console | `CORS_ORIGINS` não tem o domínio exato da Vercel (com `https://`, sem barra no fim) |
