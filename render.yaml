@@ -1,0 +1,62 @@
+# Blueprint do Render — só o backend.
+#
+# O painel (Next.js) vai para a Vercel e o Postgres para a Neon; aqui fica a
+# API. Ver DEPLOY.md para o passo a passo e para o porquê dessa divisão.
+#
+# Como usar: no Render, New → Blueprint, aponte para este repositório. Ele lê
+# este arquivo e cria o serviço. As variáveis marcadas `sync: false` ele
+# pergunta na hora — são as que não podem viver no git.
+
+services:
+  - type: web
+    name: bet-board-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+
+    envVars:
+      - key: ENVIRONMENT
+        value: prod
+      - key: LOG_LEVEL
+        value: INFO
+
+      # A string de conexão da Neon, com `?sslmode=require`. Pode colar como a
+      # Neon entrega (`postgresql://…`): o backend troca o driver sozinho.
+      - key: DATABASE_URL
+        sync: false
+
+      # Domínio do painel na Vercel. Aceita lista por vírgula:
+      #   https://bet-board.vercel.app,https://painel.seudominio.com
+      - key: CORS_ORIGINS
+        sync: false
+
+      # Assina o token da sessão. `generateValue` cria uma aleatória no primeiro
+      # deploy e a mantém entre deploys — trocá-la desloga todo mundo.
+      - key: AUTH_SECRET_KEY
+        generateValue: true
+      - key: AUTH_TOKEN_TTL_MINUTES
+        value: 720
+
+      # Primeiro administrador. Cria (ou promove) esta conta no start, uma vez.
+      # Depois disso as contas nascem em /admin, no painel.
+      - key: SUPERUSER_USERNAME
+        sync: false
+      - key: SUPERUSER_PASSWORD
+        sync: false
+
+      # IA de visão que lê o print da tip.
+      - key: VISION_PROVIDER
+        value: gemini
+      - key: VISION_API_KEY
+        sync: false
+      - key: VISION_MODEL
+        value: models/gemini-3.5-flash-lite
+      - key: VISION_MEDIA_RESOLUTION
+        value: low
+      - key: VISION_TIMEOUT_SECONDS
+        value: 30
+      - key: VISION_MAX_ATTEMPTS
+        value: 3
