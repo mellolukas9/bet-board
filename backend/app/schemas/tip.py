@@ -26,7 +26,9 @@ class TipExtracted(BaseModel):
     )
     event: str | None = Field(
         description=(
-            "Evento/partida, no formato 'Time A x Time B' quando aplicável. "
+            "A partida, no formato 'Time A x Time B'. Em múltipla com jogos "
+            "diferentes, todos separados por ' / '. NUNCA o tipo da aposta "
+            "('Dupla', 'Tripla', 'Múltipla') — isso vai em market. "
             "null se não aparecer."
         )
     )
