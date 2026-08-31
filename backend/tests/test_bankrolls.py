@@ -1,5 +1,7 @@
 """Bancas: criação, endereço público, configuração e isolamento entre contas."""
 
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 from app.models.tip import Tip, TipStatus
@@ -231,9 +233,10 @@ def test_tips_de_bancas_diferentes_nao_se_misturam(
 
 def test_stats_contam_so_a_banca_pedida(client: TestClient, bankroll, db_session) -> None:
     outra = client.post("/bankrolls", json={"name": "Segunda"}).json()
-    db_session.add(Tip(bankroll_id=bankroll.id, event="A", currency="BRL"))
-    db_session.add(Tip(bankroll_id=outra["id"], event="B", currency="BRL"))
-    db_session.add(Tip(bankroll_id=outra["id"], event="C", currency="BRL"))
+    agora = datetime.now(UTC)
+    db_session.add(Tip(bankroll_id=bankroll.id, event="A", currency="BRL", published_at=agora))
+    db_session.add(Tip(bankroll_id=outra["id"], event="B", currency="BRL", published_at=agora))
+    db_session.add(Tip(bankroll_id=outra["id"], event="C", currency="BRL", published_at=agora))
     db_session.commit()
 
     assert client.get(f"/bankrolls/{bankroll.id}/stats").json()["bets"] == 1

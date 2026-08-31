@@ -36,6 +36,10 @@ export function Dashboard({ slug }: { slug: string }) {
  * Os agregados vêm do `GET /bankrolls/{id}/stats` (o backend enxerga a banca
  * inteira); a lista vem do `/tips` da mesma banca e é filtrada por período
  * aqui — o filtro de data mora só no `/stats`, no backend.
+ *
+ * Ambos contam **só tip publicada**: o que está na fila de revisão ainda é
+ * rascunho, ninguém do grupo apostou nele, e por isso não há green ou red a
+ * confirmar. A aba Tips é onde essas vivem.
  */
 function Banca({ bankroll }: { bankroll: BankrollRead }) {
   const [periodo, setPeriodo] = useState<Periodo>("tudo");
@@ -49,7 +53,7 @@ function Banca({ bankroll }: { bankroll: BankrollRead }) {
   const buscar = useCallback(async () => {
     const [novasStats, novasTips] = await Promise.all([
       getStats(bankroll.id, since ? { since } : {}),
-      listTips(bankroll.id, { limit: 200 }),
+      listTips(bankroll.id, { published: true, limit: 200 }),
     ]);
     return {
       stats: novasStats,

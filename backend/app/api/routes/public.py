@@ -7,7 +7,9 @@ Duas travas valem a leitura:
 
 1. **Banca privada responde 404**, não 403 — quem não pode ver não precisa
    saber que ela existe.
-2. **Nada em reais sai daqui.** Os schemas de ``app.schemas.public`` são outros,
+2. **Só tip publicada aparece.** O que está na fila de revisão é rascunho: não
+   foi para o grupo, e não faz parte do histórico dele.
+3. **Nada em reais sai daqui.** Os schemas de ``app.schemas.public`` são outros,
    não um recorte dos internos: um campo novo em ``TipRead`` não vaza para cá
    por descuido, porque precisaria ser escrito nos dois lugares.
 """
@@ -52,7 +54,9 @@ def public_bankroll(
         )
 
     resumo = stats_service.bankroll_summary(session, bankroll_id=bankroll.id)
-    tips = tips_service.list_tips(session, bankroll_id=bankroll.id, limit=limit)
+    tips = tips_service.list_tips(
+        session, bankroll_id=bankroll.id, published_only=True, limit=limit
+    )
 
     logger.info("public.viewed", extra={"bankroll_id": bankroll.id, "slug": bankroll.slug})
 
@@ -94,4 +98,5 @@ def _public_stats(resumo: dict) -> PublicStats:
 
 def _primeira_aposta(bankroll: Bankroll):
     """Desde quando a banca tem histórico — o "operando desde" da página."""
-    return bankroll.tips[0].created_at if bankroll.tips else None
+    publicadas = [t for t in bankroll.tips if t.published_at is not None]
+    return min((t.created_at for t in publicadas), default=None)

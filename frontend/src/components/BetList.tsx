@@ -26,6 +26,9 @@ import type { TipRead, TipStatus } from "@/types/api";
  *
  * É aqui que o admin **diz se a tip deu green ou red**: não há API esportiva
  * nesta fase, o resultado é conferido a olho e marcado no botão.
+ *
+ * A lista recebe só tip **publicada**. Aposta que não chegou ao grupo não tem
+ * resultado a confirmar, e o backend recusa marcá-la (409).
  */
 export function BetList({
   tips,
@@ -43,8 +46,8 @@ export function BetList({
   if (tips.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-line p-10 text-center text-sm text-muted">
-        Nenhuma aposta ainda. Suba um print na aba <strong>Tips</strong> para
-        começar.
+        Nenhuma aposta publicada ainda. A banca mostra o que foi para o grupo —
+        suba o print e publique na aba <strong>Tips</strong>.
       </p>
     );
   }

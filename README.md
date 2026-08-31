@@ -200,8 +200,17 @@ VISION_MODEL=models/gemini-3.5-flash-lite
 ```
 
 A chave do Gemini sai do [Google AI Studio](https://aistudio.google.com/apikey).
-Para voltar ao Claude, troque para `VISION_PROVIDER=anthropic` e ponha um
-modelo da Anthropic em `VISION_MODEL` — o resto do código não muda.
+
+Para usar o Claude, troque o provedor e o modelo — o resto do código não muda:
+
+```
+VISION_PROVIDER=anthropic
+VISION_API_KEY=sk-ant-...
+VISION_MODEL=claude-haiku-4-5-20251001
+```
+
+A chave sai do [console da Anthropic](https://console.anthropic.com/settings/keys).
+`VISION_MEDIA_RESOLUTION` só vale para o Gemini; no Anthropic ele é ignorado.
 
 Jogue prints no CLI e veja a extração na hora:
 

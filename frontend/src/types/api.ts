@@ -42,6 +42,8 @@ export type TipRead = {
   needs_review: boolean;
   extraction_error: string | null;
   extracted_at: string | null;
+  /** null enquanto a tip não foi para o grupo — é o que libera marcar resultado */
+  published_at: string | null;
   resolved_at: string | null;
   created_at: string;
   messages: MessageLogRead[];

@@ -84,6 +84,14 @@ class Tip(Base, TimestampMixin):
 
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Quando a tip foi para o grupo. É a porta de entrada da banca: só o que foi
+    # publicado conta como aposta — o resto ainda é rascunho na fila de revisão.
+    # Derivava do `message_log`; virou coluna para dar para filtrar em SQL e para
+    # sobreviver a uma limpeza de log.
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+
     # --- resultado (Fase 2) ---
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     result_raw: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON, "sqlite"))

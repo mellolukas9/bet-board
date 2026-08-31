@@ -499,3 +499,68 @@ def test_publishing_sends_the_stored_print_to_the_channels(
     client.post(f"/tips/{tip_id}/publish")
 
     assert telegram.imagens == [PNG]
+
+
+# --- publicar é o que coloca a tip na banca -----------------------------------
+
+
+def test_publishing_stamps_published_at(client, bankroll, use_extractor, use_senders) -> None:
+    """`published_at` é o que libera marcar green/red e faz a tip entrar na banca."""
+    use_extractor(COMPLETE)
+    use_senders(FakeSender(Channel.TELEGRAM))
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+
+    assert client.get(f"/tips/{tip_id}").json()["published_at"] is None
+
+    client.post(f"/tips/{tip_id}/publish")
+
+    assert client.get(f"/tips/{tip_id}").json()["published_at"] is not None
+
+
+def test_publishing_that_failed_everywhere_does_not_stamp(
+    client, bankroll, use_extractor, use_senders
+) -> None:
+    """Sem canal que aceite, a tip não chegou ao grupo — e não entra na banca."""
+    use_extractor(COMPLETE)
+    use_senders(FakeSender(Channel.TELEGRAM, fail="canal fora do ar"))
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+
+    client.post(f"/tips/{tip_id}/publish")
+
+    body = client.get(f"/tips/{tip_id}").json()
+    assert body["published_at"] is None
+    assert client.get(f"/bankrolls/{bankroll.id}/stats").json()["bets"] == 0
+
+
+def test_republishing_keeps_the_first_publication_date(
+    client, bankroll, use_extractor, use_senders
+) -> None:
+    """Reenviar não reescreve a entrada da tip na banca."""
+    use_extractor(COMPLETE)
+    use_senders(FakeSender(Channel.TELEGRAM))
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+
+    client.post(f"/tips/{tip_id}/publish")
+    primeira = client.get(f"/tips/{tip_id}").json()["published_at"]
+
+    client.post(f"/tips/{tip_id}/publish", json={"force": True})
+
+    assert client.get(f"/tips/{tip_id}").json()["published_at"] == primeira
+
+
+def test_published_tip_can_be_marked(client, bankroll, use_extractor, use_senders) -> None:
+    """O caminho feliz inteiro: print -> revisão -> publicar -> marcar green."""
+    use_extractor(COMPLETE)
+    use_senders(FakeSender(Channel.TELEGRAM))
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+    client.post(f"/tips/{tip_id}/publish")
+
+    response = client.post(f"/tips/{tip_id}/result", json={"status": "green"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "green"
+    assert client.get(f"/bankrolls/{bankroll.id}/stats").json()["green"] == 1

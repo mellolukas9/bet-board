@@ -15,10 +15,17 @@ from app.models.tip import Tip, TipStatus
 
 
 def make_tip(
-    session: Session, bankroll, *, status: TipStatus = TipStatus.PENDING, **kwargs
+    session: Session,
+    bankroll,
+    *,
+    status: TipStatus = TipStatus.PENDING,
+    published: bool = True,
+    **kwargs,
 ) -> Tip:
+    """Publicada por padrão: só tip que foi ao grupo tem resultado a marcar."""
     tip = Tip(
         bankroll_id=bankroll.id,
+        published_at=datetime.now(UTC) if published else None,
         source="bet365",
         event="Flamengo x Palmeiras",
         market="Mais de 2.5 gols",
@@ -101,3 +108,33 @@ def test_result_exige_login(anon_client, bankroll: TestClient, db_session) -> No
     tip = make_tip(db_session, bankroll)
 
     assert anon_client.post(f"/tips/{tip.id}/result", json={"status": "green"}).status_code == 401
+
+
+def test_tip_nao_publicada_nao_aceita_resultado(client: TestClient, db_session, bankroll) -> None:
+    """A confirmação de green/red só existe depois que a tip foi para o grupo."""
+    tip = make_tip(db_session, bankroll, published=False)
+
+    response = client.post(f"/tips/{tip.id}/result", json={"status": "green"})
+
+    assert response.status_code == 409
+    assert "publique-a" in response.json()["detail"].lower()
+
+
+def test_patch_de_status_em_tip_nao_publicada_e_recusado(
+    client: TestClient, db_session, bankroll
+) -> None:
+    """O PATCH aceita `status`; vale a mesma regra, senão seria a porta dos fundos."""
+    tip = make_tip(db_session, bankroll, published=False)
+
+    assert client.patch(f"/tips/{tip.id}", json={"status": "green"}).status_code == 409
+
+
+def test_corrigir_outros_campos_continua_valendo_sem_publicar(
+    client: TestClient, db_session, bankroll
+) -> None:
+    """A fila de revisão não pode travar: só o resultado depende da publicação."""
+    tip = make_tip(db_session, bankroll, published=False)
+
+    response = client.patch(f"/tips/{tip.id}", json={"stake_units": "3"})
+
+    assert response.status_code == 200

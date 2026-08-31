@@ -4,6 +4,9 @@ Alimenta o painel: os cartões (apostas, lucro, ROI, acerto) e a curva de
 evolução da banca. Os números saem em **unidades** — é como o grupo aposta — e
 em reais, para quem quiser ver o valor cheio.
 
+Conta **só tip publicada**. O que ainda está na fila de revisão não foi apostado
+por ninguém do grupo; incluí-lo inflaria o histórico com rascunho.
+
 O cálculo roda em Python, não em SQL agregado, de propósito: o volume é de um
 grupo de tips (centenas por mês, não milhões), e assim a mesma fórmula vale em
 Postgres e no SQLite dos testes, sem dialeto pelo meio.
@@ -130,7 +133,11 @@ def _daily_series(settled: list[Tip]) -> list[dict]:
 def _tips_in_range(
     session: Session, *, bankroll_id: int, since: date | None, until: date | None
 ) -> list[Tip]:
-    stmt = select(Tip).where(Tip.bankroll_id == bankroll_id)
+    # Só o que foi para o grupo entra na banca. Tip em revisão ainda é
+    # rascunho: ninguém apostou nela, e ela não tem resultado a marcar.
+    stmt = select(Tip).where(
+        Tip.bankroll_id == bankroll_id, Tip.published_at.is_not(None)
+    )
     if since is not None:
         stmt = stmt.where(Tip.created_at >= datetime.combine(since, datetime.min.time()))
     if until is not None:

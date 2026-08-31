@@ -19,9 +19,12 @@ def add_tip(
     units: str = "1",
     stake: str = "100.00",
     resolved_at: datetime | None = None,
+    published: bool = True,
 ) -> Tip:
+    """Por padrão a tip nasce **publicada**: a banca só conta o que foi ao grupo."""
     tip = Tip(
         bankroll_id=bankroll.id,
+        published_at=datetime.now(UTC) if published else None,
         source="bet365",
         event="Time A x Time B",
         market="Mais de 2.5 gols",
@@ -128,6 +131,7 @@ def test_tip_sem_unidades_nao_estraga_a_conta(client, bankroll: TestClient, db_s
     """Tip marcada como green antes da revisão vale 0 — não vira None nem 500."""
     tip = Tip(
         bankroll_id=bankroll.id,
+        published_at=datetime.now(UTC),
         event="Time A x Time B",
         odd=Decimal("2.00"),
         status=TipStatus.GREEN,
@@ -151,3 +155,25 @@ def test_ganho_da_tip(db_session, bankroll) -> None:
 
     assert stats_service.returned_amount(green, in_units=False) == Decimal("277.50")
     assert stats_service.returned_amount(red, in_units=False) == 0
+
+
+def test_tip_nao_publicada_fica_fora_da_banca(client: TestClient, bankroll, db_session) -> None:
+    """Rascunho na fila de revisão não é aposta: ninguém do grupo a seguiu."""
+    add_tip(db_session, bankroll, status=TipStatus.PENDING, published=False)
+
+    body = client.get(f"/bankrolls/{bankroll.id}/stats").json()
+
+    assert body["bets"] == 0
+
+
+def test_a_lista_da_banca_so_traz_o_publicado(
+    client: TestClient, bankroll, db_session
+) -> None:
+    add_tip(db_session, bankroll, status=TipStatus.GREEN)
+    add_tip(db_session, bankroll, status=TipStatus.PENDING, published=False)
+
+    todas = client.get(f"/bankrolls/{bankroll.id}/tips").json()
+    da_banca = client.get(f"/bankrolls/{bankroll.id}/tips?published=true").json()
+
+    assert len(todas) == 2
+    assert len(da_banca) == 1

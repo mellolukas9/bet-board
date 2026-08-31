@@ -216,15 +216,21 @@ export function createTip(bankrollId: number, file: File): Promise<TipRead> {
   return postImage<TipRead>(`/bankrolls/${bankrollId}/tips`, file);
 }
 
-/** Lista as tips **de uma banca**. `needsReview` filtra a fila de revisão. */
+/**
+ * Lista as tips **de uma banca**.
+ *
+ * `needsReview` filtra a fila de revisão; `published` é o recorte da banca —
+ * só o que foi para o grupo.
+ */
 export function listTips(
   bankrollId: number,
-  options: { needsReview?: boolean; limit?: number } = {},
+  options: { needsReview?: boolean; published?: boolean; limit?: number } = {},
 ): Promise<TipRead[]> {
   const params = new URLSearchParams();
   if (options.needsReview !== undefined) {
     params.set("needs_review", String(options.needsReview));
   }
+  if (options.published) params.set("published", "true");
   params.set("limit", String(options.limit ?? 50));
 
   return apiFetch<TipRead[]>(`/bankrolls/${bankrollId}/tips?${params}`);

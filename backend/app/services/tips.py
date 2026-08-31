@@ -37,6 +37,10 @@ class TipNotDiscardable(RuntimeError):
     """A tip já foi para o grupo — descartar não desfaz isso."""
 
 
+class TipNotResolvable(RuntimeError):
+    """A tip ainda não foi publicada; não há resultado a marcar."""
+
+
 def create_tip_from_image(
     session: Session,
     *,
@@ -106,16 +110,22 @@ def list_tips(
     bankroll_id: int,
     status: TipStatus | None = None,
     needs_review: bool | None = None,
+    published_only: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Tip]:
-    """Lista as tips **de uma banca**, mais recentes primeiro."""
+    """Lista as tips **de uma banca**, mais recentes primeiro.
+
+    ``published_only`` é o recorte da banca: só entra o que foi para o grupo.
+    """
     stmt = (
         select(Tip)
         .options(selectinload(Tip.messages))
         .where(Tip.bankroll_id == bankroll_id)
     )
 
+    if published_only:
+        stmt = stmt.where(Tip.published_at.is_not(None))
     if status is not None:
         stmt = stmt.where(Tip.status == status)
     if needs_review is not None:
@@ -184,7 +194,18 @@ def set_result(session: Session, tip: Tip, status: TipStatus, note: str | None =
 
     Voltar para ``pending`` desfaz o resultado (erro de clique acontece) e limpa
     o ``resolved_at``.
+
+    Raises:
+        TipNotResolvable: a tip ainda não foi publicada. Aposta que não chegou
+            ao grupo não tem resultado a confirmar — e marcá-la mexeria no
+            lucro da banca por algo que ninguém seguiu.
     """
+    if not was_published(tip):
+        raise TipNotResolvable(
+            "Esta tip ainda não foi publicada. Publique-a no grupo antes de "
+            "marcar o resultado."
+        )
+
     tip.status = status
 
     if status is TipStatus.PENDING:
@@ -231,7 +252,7 @@ def missing_to_publish(tip: Tip) -> list[str]:
 
 def was_published(tip: Tip) -> bool:
     """True se a tip já foi entregue em algum canal."""
-    return any(log.status is MessageStatus.SENT for log in tip.messages)
+    return tip.published_at is not None
 
 
 def publish_tip(
@@ -271,6 +292,11 @@ def publish_tip(
         image=tip.raw_image,
         media_type=tip.raw_image_media_type,
     )
+
+    # Só carimba se algum canal aceitou. Publicação que falhou em todos não
+    # colocou a tip no grupo, e ela não pode entrar na banca por isso.
+    if tip.published_at is None and any(log.status is MessageStatus.SENT for log in logs):
+        tip.published_at = datetime.now(UTC)
 
     session.flush()
     logger.info(

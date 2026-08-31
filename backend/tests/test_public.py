@@ -28,6 +28,7 @@ def add_tip(session: Session, bankroll: Bankroll, **kwargs) -> Tip:
         "currency": "BRL",
         "status": TipStatus.GREEN,
         "resolved_at": datetime.now(UTC),
+        "published_at": datetime.now(UTC),
         **kwargs,
     }
     tip = Tip(**campos)
@@ -142,3 +143,17 @@ def test_uma_banca_publica_nao_mostra_tips_da_outra(
     tips = anon_client.get(f"/public/bankrolls/{bankroll.slug}").json()["tips"]
 
     assert [t["event"] for t in tips] == ["Da publicada"]
+
+
+def test_pagina_publica_nao_mostra_tip_em_revisao(
+    anon_client: TestClient, bankroll, db_session
+) -> None:
+    """Rascunho não faz parte do histórico do grupo."""
+    publicar(db_session, bankroll)
+    add_tip(db_session, bankroll, event="Foi para o grupo")
+    add_tip(db_session, bankroll, event="Ainda em revisão", published_at=None)
+
+    body = anon_client.get(f"/public/bankrolls/{bankroll.slug}").json()
+
+    assert [t["event"] for t in body["tips"]] == ["Foi para o grupo"]
+    assert body["stats"]["bets"] == 1

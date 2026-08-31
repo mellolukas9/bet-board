@@ -39,7 +39,11 @@ from app.schemas.tip import (
 )
 from app.services import tips as tips_service
 from app.services.messaging import channels_of, format_tip_message, get_message_senders
-from app.services.tips import TipNotDiscardable, TipNotPublishable
+from app.services.tips import (
+    TipNotDiscardable,
+    TipNotPublishable,
+    TipNotResolvable,
+)
 from app.services.vision import (
     UnsupportedImageError,
     VisionError,
@@ -162,15 +166,17 @@ def list_tips(
     session: Annotated[Session, Depends(get_db)],
     status_filter: Annotated[TipStatus | None, Query(alias="status")] = None,
     needs_review: Annotated[bool | None, Query()] = None,
+    published: Annotated[bool, Query(description="Só as que foram para o grupo")] = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[Tip]:
-    """``?needs_review=true`` é a fila de revisão manual do painel."""
+    """``?needs_review=true`` é a fila de revisão; ``?published=true``, a banca."""
     return tips_service.list_tips(
         session,
         bankroll_id=bankroll.id,
         status=status_filter,
         needs_review=needs_review,
+        published_only=published,
         limit=limit,
         offset=offset,
     )
@@ -249,7 +255,13 @@ def patch_tip(
     session: Annotated[Session, Depends(get_db)],
 ) -> Tip:
     tip = _get_owned_tip(session, tip_id, user)
-    tips_service.update_tip(session, tip, data)
+
+    try:
+        tips_service.update_tip(session, tip, data)
+    except TipNotResolvable as exc:
+        # o PATCH também aceita `status`, e vale a mesma regra do /result
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
     session.commit()
     return tip
 
@@ -292,9 +304,17 @@ def set_tip_result(
     """Resultado informado à mão — não há API esportiva nesta fase.
 
     ``status: "pending"`` desfaz um resultado marcado por engano.
+
+    Recusa (409) tip que ainda não foi publicada: aposta que não chegou ao grupo
+    não tem resultado a confirmar.
     """
     tip = _get_owned_tip(session, tip_id, user)
-    tips_service.set_result(session, tip, body.status, body.note)
+
+    try:
+        tips_service.set_result(session, tip, body.status, body.note)
+    except TipNotResolvable as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
     session.commit()
     session.refresh(tip)
     return tip

@@ -100,6 +100,8 @@ class TipRead(BaseModel):
     needs_review: bool
     extraction_error: str | None
     extracted_at: datetime | None
+    #: null enquanto a tip não foi para o grupo — é o que libera marcar resultado
+    published_at: datetime | None
     resolved_at: datetime | None
     created_at: datetime
     messages: list[MessageLogRead] = []
