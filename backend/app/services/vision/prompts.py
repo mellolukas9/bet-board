@@ -22,6 +22,19 @@ partida que não esteja escrita, e nunca escreva ali o tipo da aposta.
 - `market` não começa com "Dupla:", "Tripla:" nem "Múltipla:". O tipo da aposta \
 é deduzido das partidas; repeti-lo no mercado duplica a informação na mensagem \
 que vai para o grupo.
+
+Sobre o texto de cada seleção, que é o que mais sai errado:
+- COPIE a palavra do mercado como ela está escrita. "Chutes", "Chutes ao Gol", \
+"Escanteios", "Cartões" e "Gols" são mercados DIFERENTES. Trocar um pelo outro \
+inverte o sentido da aposta — na dúvida, transcreva literalmente.
+- O texto de uma seleção costuma QUEBRAR EM VÁRIAS LINHAS na tela ("Jhojan \
+Julio - Mais de 1.5" numa linha e "Chutes" na seguinte). Junte os pedaços numa \
+frase só antes de escrever.
+- Quando a seleção cita um jogador ou participante, MANTENHA o nome dele \
+("Jhojan Julio - Mais de 1.5 Chutes", não "Mais de 1.5 chutes"). Sem o nome, \
+quem lê a mensagem não sabe de quem é a aposta.
+- Em múltipla, separe as seleções com " + ", cada uma completa.
+
 - Se a imagem não for um print de aposta, estiver ilegível ou cortada a ponto de \
 impedir a leitura, preencha `unreadable_reason` e deixe os demais campos null.
 """

@@ -242,8 +242,21 @@ export function TipCard({
             >
               <span className="text-muted">
                 {label}
-                {obrigatorio && tip[campo] === null && (
-                  <span className="ml-1 text-amber">*</span>
+                {/* o asterisco marca "obrigatório para publicar", então aparece
+                    sempre nesses campos; a cor é que diz se ainda falta */}
+                {obrigatorio && (
+                  <span
+                    title={
+                      tip[campo] === null
+                        ? "Obrigatório para publicar — ainda falta"
+                        : "Obrigatório para publicar"
+                    }
+                    className={`ml-1 ${
+                      tip[campo] === null ? "text-amber" : "text-muted/60"
+                    }`}
+                  >
+                    *
+                  </span>
                 )}
               </span>
               {campo === "source" ? (
