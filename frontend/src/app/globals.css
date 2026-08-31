@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/**
+ * Painel escuro, tema único.
+ *
+ * Não há variante clara de propósito: a tela vive aberta ao lado do grupo, e
+ * duas paletas seria manter duas — sem ninguém para usar a segunda.
+ */
+:root {
+  --background: #070b14;
+  --foreground: #e7ecf6;
+
+  /* superfícies, do fundo para a frente */
+  --surface: #0d1322;
+  --surface-2: #131b2d;
+  --surface-3: #1a2237;
+  --border: #1f2942;
+  --border-strong: #2c395e;
+
+  --muted: #8592ad;
+  --green: #34d399;
+  --red: #fb7185;
+  --accent: #7c6cf6;
+  --amber: #fbbf24;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-muted: var(--muted);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-accent: var(--accent);
+  --color-amber: var(--amber);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* A barra do navegador em claro destoaria da tela inteira escura. */
+html {
+  color-scheme: dark;
+}
+
+/* Scrollbar discreta, para a lista longa de apostas não virar uma faixa clara. */
+* {
+  scrollbar-color: var(--surface-3) transparent;
+  scrollbar-width: thin;
+}

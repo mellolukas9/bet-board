@@ -1,0 +1,69 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-betboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-betboard}
+      POSTGRES_DB: ${POSTGRES_DB:-betboard}
+    ports:
+      # 5433 no host para não colidir com outros Postgres locais.
+      # Dentro da rede do Compose os serviços continuam usando db:5432.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-betboard} -d ${POSTGRES_DB:-betboard}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      # dentro da rede do Compose o host do banco é "db", não localhost
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-betboard}:${POSTGRES_PASSWORD:-betboard}@db:5432/${POSTGRES_DB:-betboard}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: '["http://localhost:3000"]'
+      VISION_PROVIDER: ${VISION_PROVIDER:-gemini}
+      VISION_API_KEY: ${VISION_API_KEY:-}
+      VISION_MODEL: ${VISION_MODEL:-models/gemini-3.5-flash-lite}
+      VISION_MAX_ATTEMPTS: ${VISION_MAX_ATTEMPTS:-3}
+      VISION_RETRY_BASE_DELAY: ${VISION_RETRY_BASE_DELAY:-1.0}
+      VISION_TIMEOUT_SECONDS: ${VISION_TIMEOUT_SECONDS:-30}
+      VISION_MEDIA_RESOLUTION: ${VISION_MEDIA_RESOLUTION:-low}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-}
+      AUTH_TOKEN_TTL_MINUTES: ${AUTH_TOKEN_TTL_MINUTES:-720}
+      # Só a migration `c3a1d5e7f204` lê estas cinco: elas movem o admin e o
+      # canal da versão de um cliente só para dentro da primeira banca. Depois
+      # disso, conta e canais moram no banco.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      WHATSAPP_WEBHOOK_URL: ${WHATSAPP_WEBHOOK_URL:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # embutida no bundle em build time; é o navegador que chama, daí localhost
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    environment:
+      # o servidor Next fala com o backend pela rede interna do Compose
+      API_BASE_URL_INTERNAL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
