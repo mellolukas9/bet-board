@@ -26,6 +26,9 @@ class TipStatus(enum.StrEnum):
     GREEN = "green"
     RED = "red"
     VOID = "void"
+    #: Encerrada antes do fim (o "cash out" da casa): o apostador tirou o
+    #: dinheiro na hora, por um valor que pode ser maior ou menor que o stake.
+    CASHOUT = "cashout"
 
 
 class Channel(enum.StrEnum):
@@ -68,6 +71,11 @@ class Tip(Base, TimestampMixin):
     # assinante abrir a mesma aposta em vez de remontá-la à mão.
     link: Mapped[str | None] = mapped_column(String(512))
 
+    # Quanto a casa devolveu no encerramento antecipado ("cash out"), em reais.
+    # Só faz sentido junto de status=cashout; o lucro sai da diferença para o
+    # stake, e as unidades saem da mesma proporção (ver `cashout_units`).
+    cashout_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+
     raw_image_ref: Mapped[str | None] = mapped_column(String(512))
 
     # O print em si, para ir junto com a mensagem no grupo. Fica no banco (e não
@@ -108,6 +116,25 @@ class Tip(Base, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="MessageLog.id",
     )
+
+    @property
+    def cashout_units(self) -> Decimal | None:
+        """O que voltou do encerramento, em unidades.
+
+        A casa devolve reais; o grupo lê unidades. A conversão é a mesma
+        proporção do stake — encerrar por metade do valor apostado devolve
+        metade das unidades apostadas — porque é o stake que define quanto vale
+        1u nesta tip.
+
+        None quando não há encerramento, ou quando falta o stake em reais /
+        em unidades para fazer a conta.
+        """
+        if self.cashout_amount is None or not self.stake or self.stake_units is None:
+            return None
+        proporcao = (self.cashout_amount / self.stake) * self.stake_units
+        # a divisão devolve as 28 casas do Decimal; 4 já são mais precisão do
+        # que existe em "unidades", e mantêm a resposta da API legível
+        return proporcao.quantize(Decimal("0.0001"))
 
     def __repr__(self) -> str:
         return f"<Tip id={self.id} status={self.status.value} event={self.event!r}>"

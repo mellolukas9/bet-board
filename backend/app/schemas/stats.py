@@ -22,6 +22,8 @@ class BankrollStats(BaseModel):
 
     Lucro e ROI saem em unidades (como o grupo aposta) e em reais. `void` não
     entra no ROI nem na taxa de acerto: aposta anulada devolve o stake.
+    `cashout` (encerrada antes do fim) entra nos dois — o dinheiro já mudou de
+    lado — e conta como acerto quando o saldo dela foi positivo.
     """
 
     bankroll_id: int
@@ -31,6 +33,8 @@ class BankrollStats(BaseModel):
     green: int
     red: int
     void: int
+    #: encerradas antes do fim (cash out)
+    cashout: int
     needs_review: int
 
     staked_units: Decimal
@@ -39,7 +43,7 @@ class BankrollStats(BaseModel):
     profit_brl: Decimal
     #: lucro / total apostado, em % (unidades)
     roi: Decimal
-    #: greens / (greens + reds), em %
+    #: resolvidas no positivo / resolvidas, em %
     hit_rate: Decimal
 
     series: list[BankrollPoint]

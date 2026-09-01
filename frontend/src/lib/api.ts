@@ -243,13 +243,22 @@ export function createTip(bankrollId: number, file: File): Promise<TipRead> {
  */
 export function listTips(
   bankrollId: number,
-  options: { needsReview?: boolean; published?: boolean; limit?: number } = {},
+  options: {
+    needsReview?: boolean;
+    published?: boolean;
+    /** recorte por data de entrada no board, o mesmo do `/stats` (AAAA-MM-DD) */
+    since?: string;
+    until?: string;
+    limit?: number;
+  } = {},
 ): Promise<TipRead[]> {
   const params = new URLSearchParams();
   if (options.needsReview !== undefined) {
     params.set("needs_review", String(options.needsReview));
   }
   if (options.published) params.set("published", "true");
+  if (options.since) params.set("since", options.since);
+  if (options.until) params.set("until", options.until);
   params.set("limit", String(options.limit ?? 50));
 
   return apiFetch<TipRead[]>(`/bankrolls/${bankrollId}/tips?${params}`);
@@ -293,15 +302,24 @@ export function publishTip(tipId: number): Promise<TipPublishResponse> {
 /**
  * Marca o resultado que o **admin** conferiu.
  *
- * Nesta fase não há API esportiva: green/red/void saem daqui. `pending` desfaz
- * um resultado marcado por engano.
+ * Nesta fase não há API esportiva: green/red/void/cashout saem daqui.
+ * `pending` desfaz um resultado marcado por engano.
+ *
+ * `cashout` (encerramento antecipado) exige o `cashoutAmount`, em reais: o
+ * saldo dele é a diferença para o valor apostado, e pode ser positivo ou
+ * negativo. O backend recusa (422) tanto encerrar sem valor quanto mandar
+ * valor num resultado que não é encerramento.
  */
 export function setTipResult(
   tipId: number,
   status: TipStatus,
-  note?: string,
+  options: { cashoutAmount?: string; note?: string } = {},
 ): Promise<TipRead> {
-  const body: TipResultBody = { status, note: note ?? null };
+  const body: TipResultBody = {
+    status,
+    cashout_amount: status === "cashout" ? (options.cashoutAmount ?? null) : null,
+    note: options.note ?? null,
+  };
   return apiFetch<TipRead>(`/tips/${tipId}/result`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -388,9 +406,26 @@ export function detectTelegramChats(
 
 // --- página pública -----------------------------------------------------------
 
-/** Resultados públicos de uma banca. Não exige login. */
-export function getPublicBankroll(slug: string): Promise<PublicBankroll> {
-  return apiFetch<PublicBankroll>(`/public/bankrolls/${slug}`);
+/**
+ * Resultados públicos de uma banca. Não exige login.
+ *
+ * O período (`since`/`until`) vale para os números **e** para a lista; o
+ * `status` recorta só a lista, porque cartões de um resultado escolhido a dedo
+ * sempre diriam 100% (ou -100%).
+ */
+export function getPublicBankroll(
+  slug: string,
+  filtros: { since?: string; until?: string; status?: TipStatus } = {},
+): Promise<PublicBankroll> {
+  const params = new URLSearchParams();
+  if (filtros.since) params.set("since", filtros.since);
+  if (filtros.until) params.set("until", filtros.until);
+  if (filtros.status) params.set("status", filtros.status);
+
+  const query = params.toString();
+  return apiFetch<PublicBankroll>(
+    `/public/bankrolls/${slug}${query ? `?${query}` : ""}`,
+  );
 }
 
 // --- administração do sistema -------------------------------------------------

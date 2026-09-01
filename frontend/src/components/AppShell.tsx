@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { ApiError, getMe, logout } from "@/lib/api";
-import type { BankrollRead, UserRead } from "@/types/api";
+import type { BankrollRead, MeRead, UserRead } from "@/types/api";
 
 /** As três telas de dentro de uma banca. */
 const SECOES = [
@@ -14,36 +21,98 @@ const SECOES = [
   { chave: "config", rotulo: "Configurações", caminho: "/config", icone: IconeConfig },
 ] as const;
 
-export type Secao = (typeof SECOES)[number]["chave"];
+/**
+ * A última conta carregada, guardada fora do React.
+ *
+ * A moldura da banca sobrevive à troca de seção (ela é o `layout` do
+ * `/banca/[slug]`), mas as telas de conta — `/bancas`, `/admin` — montam uma
+ * moldura nova cada uma. Sem esta memória, cada ida a elas apagava a lateral
+ * inteira e a redesenhava idêntica meio segundo depois. O `GET /auth/me`
+ * continua acontecendo: ele só deixou de ser o que decide se há algo na tela.
+ */
+let contaEmMemoria: MeRead | null = null;
+
+/**
+ * Descarta a conta lembrada.
+ *
+ * Quem cria ou apaga uma banca precisa chamar isto: a lista lembrada ficaria
+ * uma banca atrás, e a próxima moldura a montar desenharia a lateral errada
+ * antes de o `GET /auth/me` corrigi-la.
+ */
+export function esquecerConta(): void {
+  contaEmMemoria = null;
+}
+
+/** A banca aberta, para as telas de dentro dela. */
+export type BancaAberta = {
+  banca: BankrollRead;
+  /** Avisa a moldura de que a banca mudou (renomear troca o nome na lateral). */
+  aoMudarBanca: (banca: BankrollRead) => void;
+};
+
+const BancaContext = createContext<BancaAberta | null>(null);
+
+/**
+ * A banca da URL, já resolvida pela moldura.
+ *
+ * Só existe dentro de `/banca/[slug]`; fora dali é erro de programação, e o
+ * throw diz isso na hora, em vez de deixar um `null` chegar à tela.
+ */
+export function useBanca(): BancaAberta {
+  const contexto = use(BancaContext);
+  if (contexto === null) {
+    throw new Error("useBanca() só funciona dentro do layout de /banca/[slug].");
+  }
+  return contexto;
+}
+
+/** O caminho depois do `/banca/{slug}` — "", "/tips" ou "/config". */
+function caminhoDaSecao(pathname: string, slug: string): string {
+  return pathname.startsWith(`/banca/${slug}`)
+    ? pathname.slice(`/banca/${slug}`.length)
+    : "";
+}
 
 /**
  * Moldura do painel: barra lateral com as bancas da conta + topo.
  *
- * É ela que carrega o `GET /auth/me` — uma vez por tela — e resolve o `slug` da
- * URL para a banca correspondente. As páginas de dentro recebem a banca já
- * resolvida, em vez de cada uma ir buscar a sua.
+ * É ela que carrega o `GET /auth/me` e resolve o `slug` da URL para a banca
+ * correspondente, entregue às telas de dentro pelo `useBanca()` — em vez de
+ * cada uma ir buscar a sua.
+ *
+ * Dentro de uma banca ela é o `layout` do `/banca/[slug]`: montada uma vez, ela
+ * **fica** quando se troca de seção. Antes cada tela montava a sua, e ir da
+ * Banca para Tips apagava a lateral e o topo para redesenhá-los iguais.
  *
  * Fica de fora do `/login` e da página pública, que não têm conta nenhuma.
  */
 export function AppShell({
   slug,
-  secao,
   titulo,
   acoes,
   children,
 }: {
   /** Banca da URL. Sem ela, a moldura serve uma tela de conta (ex: /bancas). */
   slug?: string;
-  secao?: Secao;
   titulo?: string;
   acoes?: ReactNode;
-  children: ReactNode | ((bankroll: BankrollRead) => ReactNode);
+  children: ReactNode;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState<UserRead | null>(null);
-  const [bankrolls, setBankrolls] = useState<BankrollRead[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  const pathname = usePathname();
+  const [user, setUser] = useState<UserRead | null>(contaEmMemoria?.user ?? null);
+  const [bankrolls, setBankrolls] = useState<BankrollRead[]>(
+    contaEmMemoria?.bankrolls ?? [],
+  );
+  const [carregando, setCarregando] = useState(contaEmMemoria === null);
   const [erro, setErro] = useState<string | null>(null);
+  //: "confirmando" enquanto a pergunta está na tela, "saindo" enquanto a volta
+  //: para o login acontece
+  const [saida, setSaida] = useState<"nao" | "confirmando" | "saindo">("nao");
+
+  const secao = slug
+    ? SECOES.find((s) => s.caminho === caminhoDaSecao(pathname, slug))?.chave
+    : undefined;
 
   /**
    * Carga da conta.
@@ -57,6 +126,7 @@ export function AppShell({
     void (async () => {
       try {
         const me = await getMe();
+        contaEmMemoria = me;
         if (!atual) return;
         setUser(me.user);
         setBankrolls(me.bankrolls);
@@ -76,7 +146,18 @@ export function AppShell({
     };
   }, []);
 
+  /**
+   * Sair de verdade, depois de a pessoa confirmar.
+   *
+   * O estado vira "saindo" **antes** do `replace` porque a volta ao login passa
+   * pelo servidor (é o `proxy` que decide a rota): sem a tela de saída, o
+   * painel ficaria parado, com os dados de quem já saiu, até a troca acontecer.
+   */
   function sair() {
+    setSaida("saindo");
+    // a memória da conta não pode sobreviver ao logout: quem entrasse depois
+    // nesta aba veria a lateral da pessoa anterior por um instante
+    contaEmMemoria = null;
     logout();
     router.replace("/login");
     // o proxy lê o cookie no servidor; sem o refresh a rota anterior fica em cache
@@ -84,6 +165,25 @@ export function AppShell({
   }
 
   const atual = slug ? bankrolls.find((b) => b.slug === slug) : undefined;
+
+  /**
+   * A tela de dentro mexeu na banca (renomear, publicar): a lateral precisa
+   * acompanhar, porque a moldura não remonta mais a cada navegação.
+   *
+   * Renomear também troca o endereço, e o endereço está na URL — daí o
+   * `replace`, que faz a moldura reencontrar a banca pelo slug novo sem
+   * recarregar a página.
+   */
+  const aoMudarBanca = useCallback(
+    (banca: BankrollRead) => {
+      contaEmMemoria = null;
+      setBankrolls((atuais) => atuais.map((b) => (b.id === banca.id ? banca : b)));
+      if (slug && banca.slug !== slug) {
+        router.replace(`/banca/${banca.slug}${caminhoDaSecao(pathname, slug)}`);
+      }
+    },
+    [pathname, router, slug],
+  );
 
   return (
     <div className="flex min-h-screen">
@@ -185,7 +285,7 @@ export function AppShell({
           )}
           <button
             type="button"
-            onClick={sair}
+            onClick={() => setSaida("confirmando")}
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-white/5 hover:text-white"
           >
             <IconeSair />
@@ -210,7 +310,7 @@ export function AppShell({
           {acoes}
           <button
             type="button"
-            onClick={sair}
+            onClick={() => setSaida("confirmando")}
             className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted transition hover:bg-white/5 hover:text-white md:hidden"
           >
             Sair
@@ -229,12 +329,120 @@ export function AppShell({
 
           {carregando && <Carregando />}
 
-          {!carregando && !erro && typeof children !== "function" && children}
+          {!carregando && !erro && !slug && children}
 
-          {!carregando && !erro && typeof children === "function" && (
-            atual ? children(atual) : <BancaNaoEncontrada slug={slug} />
-          )}
+          {!carregando &&
+            !erro &&
+            slug &&
+            (atual ? (
+              <BancaContext value={{ banca: atual, aoMudarBanca }}>
+                {children}
+              </BancaContext>
+            ) : (
+              <BancaNaoEncontrada slug={slug} />
+            ))}
         </main>
+      </div>
+
+      {saida === "confirmando" && (
+        <ConfirmarSaida
+          nome={user?.name || user?.username}
+          onCancelar={() => setSaida("nao")}
+          onSair={sair}
+        />
+      )}
+
+      {saida === "saindo" && <Saindo />}
+    </div>
+  );
+}
+
+/**
+ * "Sair mesmo?", antes de derrubar a sessão.
+ *
+ * Não é um `confirm()` do navegador: ele trava a página inteira enquanto está
+ * aberto, e é o mesmo motivo pelo qual as outras confirmações do painel (a de
+ * descartar tip, a de apagar banca) também são de mentira.
+ *
+ * O botão que fica em foco é o de **ficar**: quem chegou aqui sem querer sai da
+ * pergunta com um Enter, e quem quer mesmo sair dá um Tab a mais.
+ */
+function ConfirmarSaida({
+  nome,
+  onCancelar,
+  onSair,
+}: {
+  nome?: string | null;
+  onCancelar: () => void;
+  onSair: () => void;
+}) {
+  // Esc fecha: é o que se espera de qualquer caixa dessas, e aqui ela cobre a
+  // tela inteira — sem isso o teclado ficaria preso nos dois botões
+  useEffect(() => {
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancelar();
+    }
+    document.addEventListener("keydown", aoTeclar);
+    return () => document.removeEventListener("keydown", aoTeclar);
+  }, [onCancelar]);
+
+  return (
+    <div
+      // clicar fora é o mesmo que cancelar; o `stopPropagation` da caixa evita
+      // que um clique dentro dela conte como "fora"
+      onClick={onCancelar}
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="titulo-da-saida"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-xl border border-line bg-surface p-6 shadow-2xl"
+      >
+        <h2 id="titulo-da-saida" className="text-base font-medium">
+          Sair da conta?
+        </h2>
+        <p className="mt-1.5 text-sm text-muted">
+          {nome ? `Você vai desconectar ${nome} deste navegador e ` : "Você vai "}
+          voltar para a tela de login.
+        </p>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            autoFocus
+            onClick={onCancelar}
+            className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted transition hover:bg-white/5 hover:text-white"
+          >
+            Ficar
+          </button>
+          <button
+            type="button"
+            onClick={onSair}
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent/85"
+          >
+            Sair
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A tela enquanto o painel dá lugar ao login. */
+function Saindo() {
+  return (
+    <div
+      role="status"
+      className="fixed inset-0 z-50 grid place-items-center bg-background/95 backdrop-blur-sm"
+    >
+      <div className="flex items-center gap-3 text-sm text-muted">
+        <span
+          aria-hidden
+          className="size-4 shrink-0 animate-spin rounded-full border-2 border-line border-t-accent"
+        />
+        Saindo…
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ Duas portas de entrada para a leitura do print, de propósito:
   stake em unidades é informado pelo admin no ``PATCH`` — o print só traz reais.
 """
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -40,6 +41,7 @@ from app.schemas.tip import (
 from app.services import tips as tips_service
 from app.services.messaging import channels_of, format_tip_message, get_message_senders
 from app.services.tips import (
+    TipNotCashable,
     TipNotDiscardable,
     TipNotPublishable,
     TipNotResolvable,
@@ -167,16 +169,24 @@ def list_tips(
     status_filter: Annotated[TipStatus | None, Query(alias="status")] = None,
     needs_review: Annotated[bool | None, Query()] = None,
     published: Annotated[bool, Query(description="Só as que foram para o grupo")] = False,
+    since: Annotated[date | None, Query(description="Data inicial, inclusive")] = None,
+    until: Annotated[date | None, Query(description="Data final, inclusive")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[Tip]:
-    """``?needs_review=true`` é a fila de revisão; ``?published=true``, a banca."""
+    """``?needs_review=true`` é a fila de revisão; ``?published=true``, a banca.
+
+    ``since``/``until`` usam o mesmo recorte do ``/stats``, para a lista e os
+    cartões do painel falarem do mesmo período.
+    """
     return tips_service.list_tips(
         session,
         bankroll_id=bankroll.id,
         status=status_filter,
         needs_review=needs_review,
         published_only=published,
+        since=since,
+        until=until,
         limit=limit,
         offset=offset,
     )
@@ -258,8 +268,9 @@ def patch_tip(
 
     try:
         tips_service.update_tip(session, tip, data)
-    except TipNotResolvable as exc:
-        # o PATCH também aceita `status`, e vale a mesma regra do /result
+    except (TipNotResolvable, TipNotCashable) as exc:
+        # o PATCH também aceita `status`, e valem as mesmas regras do /result —
+        # inclusive a de que encerrar exige dizer por quanto (aí é pelo /result)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     session.commit()
@@ -293,7 +304,7 @@ def delete_tip(
 @router.post(
     "/{tip_id}/result",
     response_model=TipRead,
-    summary="O admin marca a tip como green, red ou void",
+    summary="O admin marca a tip como green, red, void ou encerrada",
 )
 def set_tip_result(
     tip_id: int,
@@ -303,6 +314,10 @@ def set_tip_result(
 ) -> Tip:
     """Resultado informado à mão — não há API esportiva nesta fase.
 
+    ``status: "cashout"`` é o encerramento antecipado, e exige o
+    ``cashout_amount`` (o valor devolvido pela casa, em reais): o saldo dele é a
+    diferença para o valor apostado, e pode ser positivo ou negativo.
+
     ``status: "pending"`` desfaz um resultado marcado por engano.
 
     Recusa (409) tip que ainda não foi publicada: aposta que não chegou ao grupo
@@ -311,8 +326,14 @@ def set_tip_result(
     tip = _get_owned_tip(session, tip_id, user)
 
     try:
-        tips_service.set_result(session, tip, body.status, body.note)
-    except TipNotResolvable as exc:
+        tips_service.set_result(
+            session,
+            tip,
+            body.status,
+            body.note,
+            cashout_amount=body.cashout_amount,
+        )
+    except (TipNotResolvable, TipNotCashable) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     session.commit()

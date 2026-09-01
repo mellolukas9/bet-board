@@ -1,6 +1,6 @@
 import { Dashboard } from "@/components/Dashboard";
 
-export default async function Banca({ params }: PageProps<"/banca/[slug]">) {
-  const { slug } = await params;
-  return <Dashboard slug={slug} />;
+/** A banca em si. O `slug` já é resolvido pelo `layout`, que monta a moldura. */
+export default function Banca() {
+  return <Dashboard />;
 }

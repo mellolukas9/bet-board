@@ -14,6 +14,7 @@ Duas travas valem a leitura:
    por descuido, porque precisaria ser escrito nos dois lugares.
 """
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.db.session import get_db
+from app.models.tip import TipStatus
 from app.models.user import Bankroll
 from app.schemas.public import PublicBankroll, PublicPoint, PublicStats, PublicTip
 from app.services import bankrolls as bankrolls_service
@@ -43,8 +45,21 @@ MAX_TIPS = 200
 def public_bankroll(
     slug: Annotated[str, Path(max_length=64)],
     session: Annotated[Session, Depends(get_db)],
+    since: Annotated[date | None, Query(description="Data inicial, inclusive")] = None,
+    until: Annotated[date | None, Query(description="Data final, inclusive")] = None,
+    status_filter: Annotated[
+        TipStatus | None,
+        Query(alias="status", description="Recorta só a lista, não os números"),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_TIPS)] = 100,
 ) -> PublicBankroll:
+    """A página, opcionalmente recortada por período e por resultado.
+
+    O período (``since``/``until``) vale para os **dois**: os números e a lista
+    falam da mesma janela. Já o ``status`` recorta **só a lista** — os cartões
+    continuam sendo o desempenho do período, e não o de um resultado escolhido
+    a dedo, que sempre daria 100% ou -100%.
+    """
     bankroll = bankrolls_service.get_by_slug(session, slug)
 
     if bankroll is None or not bankroll.is_public:
@@ -53,9 +68,17 @@ def public_bankroll(
             detail="Banca não encontrada ou não publicada.",
         )
 
-    resumo = stats_service.bankroll_summary(session, bankroll_id=bankroll.id)
+    resumo = stats_service.bankroll_summary(
+        session, bankroll_id=bankroll.id, since=since, until=until
+    )
     tips = tips_service.list_tips(
-        session, bankroll_id=bankroll.id, published_only=True, limit=limit
+        session,
+        bankroll_id=bankroll.id,
+        published_only=True,
+        status=status_filter,
+        since=since,
+        until=until,
+        limit=limit,
     )
 
     logger.info("public.viewed", extra={"bankroll_id": bankroll.id, "slug": bankroll.slug})
@@ -80,6 +103,7 @@ def _public_stats(resumo: dict) -> PublicStats:
         green=resumo["green"],
         red=resumo["red"],
         void=resumo["void"],
+        cashout=resumo["cashout"],
         staked_units=resumo["staked_units"],
         profit_units=resumo["profit_units"],
         roi=resumo["roi"],

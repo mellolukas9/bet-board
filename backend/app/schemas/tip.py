@@ -5,7 +5,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from app.models.tip import Channel, MessageStatus, TipStatus
 
@@ -159,6 +166,10 @@ class TipRead(BaseModel):
     odd: Decimal | None
     stake: Decimal | None
     stake_units: Decimal | None
+    #: quanto a casa devolveu no encerramento antecipado, em reais
+    cashout_amount: Decimal | None
+    #: o mesmo valor em unidades, na proporção do stake (derivado, não gravado)
+    cashout_units: Decimal | None
     currency: str
     link: str | None
     raw_image_ref: str | None
@@ -226,15 +237,42 @@ class TipResult(BaseModel):
 
     status: TipStatus = Field(
         description=(
-            "green (acertou), red (errou), void (anulada/devolvida) ou pending "
-            "para voltar a tip para 'aguardando resultado'."
+            "green (acertou), red (errou), void (anulada/devolvida), "
+            "cashout (encerrada antes do fim) ou pending para voltar a tip "
+            "para 'aguardando resultado'."
         )
+    )
+    cashout_amount: Decimal | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Obrigatório em cashout: quanto a casa devolveu no encerramento, "
+            "em reais. Acima do stake vira lucro; abaixo, prejuízo."
+        ),
     )
     note: str | None = Field(
         default=None,
         max_length=500,
         description="Observação livre do admin, guardada junto do resultado.",
     )
+
+    @model_validator(mode="after")
+    def _cashout_tem_valor(self) -> "TipResult":
+        """Encerrar sem dizer por quanto não é um resultado, é um campo em branco.
+
+        A conta do encerramento é `devolvido - apostado`; sem o devolvido a tip
+        entraria na banca valendo zero, calada.
+        """
+        if self.status is TipStatus.CASHOUT and self.cashout_amount is None:
+            raise ValueError(
+                "Informe por quanto a aposta foi encerrada (o valor devolvido "
+                "pela casa, em reais)."
+            )
+        if self.status is not TipStatus.CASHOUT and self.cashout_amount is not None:
+            raise ValueError(
+                "O valor de encerramento só vale para o resultado 'encerrada'."
+            )
+        return self
 
 
 class TipPublish(BaseModel):

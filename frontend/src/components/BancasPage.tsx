@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { AppShell } from "@/components/AppShell";
+import { AppShell, esquecerConta } from "@/components/AppShell";
 import { ApiError, createBankroll, listBankrolls } from "@/lib/api";
 import type { BankrollRead } from "@/types/api";
 
@@ -117,6 +117,8 @@ function NovaBanca({ onCriada }: { onCriada: (b: BankrollRead) => void }) {
     setErro(null);
     try {
       const nova = await createBankroll({ name: nome.trim() });
+      // a lateral lembrada ainda não conhece esta banca
+      esquecerConta();
       onCriada(nova);
       setNome("");
       // já leva para a configuração: sem canal, a banca não publica nada

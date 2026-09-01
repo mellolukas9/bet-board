@@ -3,44 +3,29 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { AppShell } from "@/components/AppShell";
+import { esquecerConta, useBanca } from "@/components/AppShell";
 import { TelegramWizard } from "@/components/TelegramWizard";
 import { ApiError, deleteBankroll, patchBankroll } from "@/lib/api";
 import { slugify } from "@/lib/slug";
 import type { BankrollRead } from "@/types/api";
 
-/** Configurações da banca: identidade, página pública e canais de envio. */
-export function ConfigPage({ slug }: { slug: string }) {
-  return (
-    <AppShell slug={slug} secao="config">
-      {(bankroll) => <Config bankroll={bankroll} />}
-    </AppShell>
-  );
-}
-
-function Config({ bankroll: inicial }: { bankroll: BankrollRead }) {
+/**
+ * Configurações da banca: identidade, página pública e canais de envio.
+ *
+ * Toda alteração sobe para a moldura (`aoMudarBanca`): é ela que mantém a
+ * lateral e — quando renomear troca o endereço — a URL desta tela, que sem isso
+ * apontaria para uma banca que já não existe naquele slug.
+ */
+export function ConfigPage() {
   const router = useRouter();
-  const [bankroll, setBankroll] = useState(inicial);
-
-  /**
-   * Renomear muda o endereço, e o endereço está na URL desta tela.
-   *
-   * Sem trocar a URL, um F5 depois de renomear cairia numa banca que já não
-   * existe naquele endereço.
-   */
-  function aoMudar(atualizada: BankrollRead) {
-    setBankroll(atualizada);
-    if (atualizada.slug !== bankroll.slug) {
-      window.history.replaceState(null, "", `/banca/${atualizada.slug}/config`);
-    }
-  }
+  const { banca, aoMudarBanca } = useBanca();
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
-      <Identidade bankroll={bankroll} onChange={aoMudar} />
-      <PaginaPublica bankroll={bankroll} onChange={aoMudar} />
-      <TelegramWizard bankroll={bankroll} onChange={aoMudar} />
-      <Perigo bankroll={bankroll} router={router} />
+      <Identidade bankroll={banca} onChange={aoMudarBanca} />
+      <PaginaPublica bankroll={banca} onChange={aoMudarBanca} />
+      <TelegramWizard bankroll={banca} onChange={aoMudarBanca} />
+      <Perigo bankroll={banca} router={router} />
     </div>
   );
 }
@@ -331,6 +316,9 @@ function Perigo({
     setErro(null);
     try {
       await deleteBankroll(bankroll.id);
+      // a lateral lembrada ainda tem esta banca; sem isto ela reaparece por um
+      // instante na próxima tela
+      esquecerConta();
       router.replace("/bancas");
       router.refresh();
     } catch (e) {

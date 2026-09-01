@@ -177,3 +177,92 @@ def test_a_lista_da_banca_so_traz_o_publicado(
 
     assert len(todas) == 2
     assert len(da_banca) == 1
+
+
+# --- encerramento antecipado (cash out) ---------------------------------------
+
+
+def encerrada(session: Session, bankroll, *, devolvido: str, **kwargs) -> Tip:
+    """Uma tip encerrada: 100 apostados (1u) e ``devolvido`` de volta."""
+    tip = add_tip(session, bankroll, status=TipStatus.CASHOUT, **kwargs)
+    tip.cashout_amount = Decimal(devolvido)
+    session.commit()
+    return tip
+
+
+def test_encerramento_com_lucro_entra_na_banca(client: TestClient, bankroll, db_session) -> None:
+    """120 devolvidos sobre 100 apostados: +0,2u de lucro sobre 1u apostada."""
+    encerrada(db_session, bankroll, devolvido="120.00")
+
+    body = client.get(f"/bankrolls/{bankroll.id}/stats").json()
+
+    assert body["cashout"] == 1
+    assert body["settled"] == 1
+    assert Decimal(body["profit_units"]) == Decimal("0.20")
+    assert Decimal(body["profit_brl"]) == Decimal("20.00")
+    assert Decimal(body["roi"]) == Decimal("20.00")
+
+
+def test_encerramento_com_prejuizo_entra_negativo(
+    client: TestClient, bankroll, db_session
+) -> None:
+    encerrada(db_session, bankroll, devolvido="40.00")
+
+    body = client.get(f"/bankrolls/{bankroll.id}/stats").json()
+
+    assert Decimal(body["profit_units"]) == Decimal("-0.60")
+    assert Decimal(body["profit_brl"]) == Decimal("-60.00")
+
+
+def test_ganho_do_encerramento_e_o_que_a_casa_devolveu(db_session, bankroll) -> None:
+    """Nem o retorno cheio da odd, nem zero: o valor do cash out."""
+    tip = encerrada(db_session, bankroll, devolvido="120.00", odd="3.00")
+
+    assert stats_service.returned_amount(tip, in_units=False) == Decimal("120.00")
+    assert stats_service.returned_amount(tip, in_units=True) == Decimal("1.20")
+
+
+def test_encerramento_no_positivo_conta_como_acerto(
+    client: TestClient, bankroll, db_session
+) -> None:
+    """Sair da aposta ganhando dinheiro é acerto para quem seguiu a tip."""
+    encerrada(db_session, bankroll, devolvido="120.00")
+    add_tip(db_session, bankroll, status=TipStatus.RED)
+
+    body = client.get(f"/bankrolls/{bankroll.id}/stats").json()
+
+    assert body["settled"] == 2
+    assert Decimal(body["hit_rate"]) == Decimal("50.00")
+
+
+def test_encerramento_no_negativo_nao_conta_como_acerto(
+    client: TestClient, bankroll, db_session
+) -> None:
+    encerrada(db_session, bankroll, devolvido="40.00")
+    add_tip(db_session, bankroll, status=TipStatus.GREEN)
+
+    body = client.get(f"/bankrolls/{bankroll.id}/stats").json()
+
+    assert Decimal(body["hit_rate"]) == Decimal("50.00")
+
+
+def test_encerramento_entra_na_curva_do_grafico(client: TestClient, bankroll, db_session) -> None:
+    encerrada(db_session, bankroll, devolvido="150.00")
+
+    series = client.get(f"/bankrolls/{bankroll.id}/stats").json()["series"]
+
+    assert len(series) == 1
+    assert Decimal(series[0]["cumulative_units"]) == Decimal("0.50")
+
+
+def test_a_lista_da_banca_recorta_por_periodo(client: TestClient, bankroll, db_session) -> None:
+    """O mesmo `since` do /stats, para lista e cartões falarem do mesmo período."""
+    antiga = add_tip(db_session, bankroll, status=TipStatus.GREEN)
+    antiga.created_at = datetime.now(UTC) - timedelta(days=40)
+    db_session.commit()
+    add_tip(db_session, bankroll, status=TipStatus.GREEN)
+
+    desde = (datetime.now(UTC) - timedelta(days=7)).date().isoformat()
+    tips = client.get(f"/bankrolls/{bankroll.id}/tips?published=true&since={desde}").json()
+
+    assert len(tips) == 1

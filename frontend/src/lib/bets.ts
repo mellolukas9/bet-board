@@ -18,17 +18,33 @@ export function odd(tip: TipRead): number {
   return Number(tip.odd ?? 0);
 }
 
-/** "Ganho": o retorno bruto. stake x odd no green, nada no red. */
+/** O que voltou do encerramento antecipado, em unidades. */
+export function cashoutUnits(tip: TipRead): number {
+  return Number(tip.cashout_units ?? 0);
+}
+
+/**
+ * "Ganho": o retorno bruto. stake x odd no green, nada no red.
+ *
+ * No encerramento quem diz é a casa: voltou o valor do cash out.
+ */
 export function retorno(tip: TipRead): number {
   if (tip.status === "green") return stakeUnits(tip) * odd(tip);
   if (tip.status === "void") return stakeUnits(tip);
+  if (tip.status === "cashout") return cashoutUnits(tip);
   return 0;
 }
 
-/** "Lucro": o que sobra. `stake x (odd - 1)` no green, `-stake` no red. */
+/**
+ * "Lucro": o que sobra. `stake x (odd - 1)` no green, `-stake` no red.
+ *
+ * O encerramento é a diferença entre o que voltou e o que foi apostado — por
+ * isso ele pode dar lucro **ou** prejuízo, sem ser green nem red.
+ */
 export function lucro(tip: TipRead): number {
   if (tip.status === "green") return stakeUnits(tip) * (odd(tip) - 1);
   if (tip.status === "red") return -stakeUnits(tip);
+  if (tip.status === "cashout") return cashoutUnits(tip) - stakeUnits(tip);
   return 0;
 }
 
@@ -37,6 +53,7 @@ export const ROTULO_STATUS: Record<TipStatus, string> = {
   green: "Ganha",
   red: "Perdida",
   void: "Anulada",
+  cashout: "Encerrada",
 };
 
 // --- formatação ---------------------------------------------------------------

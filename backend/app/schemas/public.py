@@ -25,6 +25,8 @@ class PublicTip(BaseModel):
     source: str | None
     odd: Decimal | None
     stake_units: Decimal | None
+    #: o que voltou de um encerramento antecipado, em unidades (null nas demais)
+    cashout_units: Decimal | None
     status: TipStatus
     created_at: datetime
     resolved_at: datetime | None
@@ -44,6 +46,7 @@ class PublicStats(BaseModel):
     green: int
     red: int
     void: int
+    cashout: int
 
     staked_units: Decimal
     profit_units: Decimal

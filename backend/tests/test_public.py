@@ -1,6 +1,6 @@
 """Página pública da banca — a URL que o tipster manda para os assinantes."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -157,3 +157,53 @@ def test_pagina_publica_nao_mostra_tip_em_revisao(
 
     assert [t["event"] for t in body["tips"]] == ["Foi para o grupo"]
     assert body["stats"]["bets"] == 1
+
+
+# --- filtros da página pública ------------------------------------------------
+
+
+def test_filtro_de_periodo_vale_para_a_lista_e_para_os_numeros(
+    anon_client: TestClient, bankroll, db_session
+) -> None:
+    publicar(db_session, bankroll)
+    antiga = add_tip(db_session, bankroll, event="Do mês passado")
+    antiga.created_at = datetime.now(UTC) - timedelta(days=40)
+    db_session.commit()
+    add_tip(db_session, bankroll, event="Desta semana")
+
+    desde = (datetime.now(UTC) - timedelta(days=7)).date().isoformat()
+    body = anon_client.get(f"/public/bankrolls/{bankroll.slug}?since={desde}").json()
+
+    assert [t["event"] for t in body["tips"]] == ["Desta semana"]
+    assert body["stats"]["bets"] == 1
+
+
+def test_filtro_de_resultado_recorta_so_a_lista(
+    anon_client: TestClient, bankroll, db_session
+) -> None:
+    """Os cartões seguem sendo o desempenho do período — filtrá-los daria 100%."""
+    publicar(db_session, bankroll)
+    add_tip(db_session, bankroll, event="Ganha")
+    add_tip(db_session, bankroll, event="Perdida", status=TipStatus.RED)
+
+    body = anon_client.get(f"/public/bankrolls/{bankroll.slug}?status=red").json()
+
+    assert [t["event"] for t in body["tips"]] == ["Perdida"]
+    assert body["stats"]["bets"] == 2
+
+
+def test_encerramento_aparece_em_unidades_sem_vazar_reais(
+    anon_client: TestClient, bankroll, db_session
+) -> None:
+    """300 apostados (2u) encerrados por 450: 3u de volta, e nenhum real na resposta."""
+    publicar(db_session, bankroll)
+    tip = add_tip(db_session, bankroll, status=TipStatus.CASHOUT)
+    tip.cashout_amount = Decimal("450.00")
+    db_session.commit()
+
+    body = anon_client.get(f"/public/bankrolls/{bankroll.slug}").json()
+
+    assert Decimal(body["tips"][0]["cashout_units"]) == Decimal("3")
+    assert body["stats"]["cashout"] == 1
+    assert "cashout_amount" not in body["tips"][0]
+    assert "profit_brl" not in body["stats"]

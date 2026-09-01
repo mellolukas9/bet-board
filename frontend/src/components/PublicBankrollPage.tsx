@@ -1,4 +1,10 @@
+import { Ajuda } from "@/components/Ajuda";
 import { BankrollChart } from "@/components/BankrollChart";
+import {
+  FiltrosPublicos,
+  type PeriodoPublico,
+  type ResultadoPublico,
+} from "@/components/FiltrosPublicos";
 import {
   ROTULO_STATUS,
   chaveDoDia,
@@ -16,12 +22,21 @@ import type { BankrollPoint, PublicBankroll, PublicTip } from "@/types/api";
  *
  * Renderizada no servidor: é um link compartilhado, e precisa abrir inteira
  * para quem clica — sem esperar JavaScript, e com o texto disponível para
- * pré-visualização de link.
+ * pré-visualização de link. Os filtros seguem essa regra: são links que trocam
+ * a URL, não estado de cliente.
  *
  * Tudo em **unidades**. O backend nem envia os valores em reais nesta rota
  * (ver `app/schemas/public.py`), então não há como vazar daqui.
  */
-export function PublicBankrollPage({ banca }: { banca: PublicBankroll }) {
+export function PublicBankrollPage({
+  banca,
+  periodo,
+  resultado,
+}: {
+  banca: PublicBankroll;
+  periodo: PeriodoPublico;
+  resultado: ResultadoPublico;
+}) {
   const lucro = Number(banca.stats.profit_units);
 
   return (
@@ -55,30 +70,48 @@ export function PublicBankrollPage({ banca }: { banca: PublicBankroll }) {
       </header>
 
       <div className="space-y-4">
+        <FiltrosPublicos
+          slug={banca.slug}
+          periodo={periodo}
+          resultado={resultado}
+        />
+
         <BankrollChart series={comoSerie(banca.stats.series)} altura="h-80 sm:h-96" />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Cartao rotulo="APOSTAS" valor={String(banca.stats.bets)} />
+          <Cartao
+            rotulo="APOSTAS"
+            valor={String(banca.stats.bets)}
+            ajuda="Quantas apostas foram enviadas ao grupo no período, contando as que ainda esperam resultado."
+          />
           <Cartao
             rotulo="LUCRO"
             valor={formatUnitsSigned(lucro)}
             tom={lucro > 0 ? "green" : lucro < 0 ? "red" : "neutro"}
+            ajuda="O resultado somado do período, em unidades. Uma aposta de 2u na cotação 1,85 devolve +1,7u se ganhar e -2u se perder."
           />
           <Cartao
             rotulo="ROI"
             valor={formatPercent(banca.stats.roi)}
             tom={Number(banca.stats.roi) > 0 ? "green" : "neutro"}
+            ajuda="Retorno sobre o investimento: o lucro dividido por tudo o que foi apostado. 10% quer dizer que cada 1u apostada devolveu 0,1u de lucro."
           />
-          <Cartao rotulo="ACERTO" valor={formatPercent(banca.stats.hit_rate)} />
+          <Cartao
+            rotulo="ACERTO"
+            valor={formatPercent(banca.stats.hit_rate)}
+            ajuda="Quantas apostas resolvidas terminaram no positivo. Anuladas ficam de fora. Acerto alto com cotação baixa pode render menos que o contrário — por isso ele anda junto do ROI."
+          />
         </div>
 
-        <Lista tips={banca.tips} />
+        <Lista tips={banca.tips} resultado={resultado} />
       </div>
 
       <footer className="mt-10 border-t border-line pt-5 text-center text-xs text-muted">
         <p>
-          Valores em unidades (u) — 1u é a aposta padrão da banca. Resultados
-          conferidos e publicados pelo administrador do grupo.
+          Valores em unidades (u) — 1u é a aposta padrão da banca.
+          &quot;Encerrada&quot; é a aposta que saiu antes do fim do jogo, pelo
+          valor que a casa ofereceu na hora. Resultados conferidos e publicados
+          pelo administrador do grupo.
         </p>
         <p className="mt-2">Bet Board</p>
       </footer>
@@ -101,17 +134,24 @@ function comoSerie(series: PublicBankroll["stats"]["series"]): BankrollPoint[] {
 function Cartao({
   rotulo,
   valor,
+  ajuda,
   tom = "neutro",
 }: {
   rotulo: string;
   valor: string;
+  ajuda: string;
   tom?: "green" | "red" | "neutro";
 }) {
   const cor =
     tom === "green" ? "text-green" : tom === "red" ? "text-red" : "text-white";
 
   return (
-    <article className="rounded-xl border border-line bg-surface px-4 py-5 text-center">
+    <article className="relative rounded-xl border border-line bg-surface px-4 py-5 text-center">
+      {/* o assinante do grupo é quem menos conhece o jargão: aqui o "?" vale
+          ainda mais do que no painel de quem administra */}
+      <span className="absolute right-3 top-3">
+        <Ajuda lado="esquerda">{ajuda}</Ajuda>
+      </span>
       <p className="text-[11px] font-semibold tracking-widest text-muted">
         {rotulo}
       </p>
@@ -120,11 +160,19 @@ function Cartao({
   );
 }
 
-function Lista({ tips }: { tips: PublicTip[] }) {
+function Lista({
+  tips,
+  resultado,
+}: {
+  tips: PublicTip[];
+  resultado: ResultadoPublico;
+}) {
   if (tips.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-line p-10 text-center text-sm text-muted">
-        Nenhuma aposta publicada ainda.
+        {resultado === "todas"
+          ? "Nenhuma aposta publicada neste período."
+          : "Nenhuma aposta com este resultado neste período."}
       </p>
     );
   }
@@ -156,10 +204,11 @@ function Lista({ tips }: { tips: PublicTip[] }) {
 
 function Linha({ tip }: { tip: PublicTip }) {
   const resultado = lucroDe(tip);
+  // encerrada não tem cor própria: quem diz se ela foi boa ou ruim é o saldo
   const cor =
-    tip.status === "green"
+    tip.status === "green" || (tip.status === "cashout" && resultado > 0)
       ? "bg-green/15 text-green"
-      : tip.status === "red"
+      : tip.status === "red" || (tip.status === "cashout" && resultado < 0)
         ? "bg-red/15 text-red"
         : "bg-white/5 text-muted";
 
@@ -255,11 +304,15 @@ function Saldo({ valor }: { valor: number }) {
  *
  * A mesma fórmula do backend, repetida aqui pelo mesmo motivo do painel: é uma
  * conta por linha, e os agregados (que é o que precisa bater) já vêm prontos.
+ *
+ * No encerramento antecipado o backend já manda o que voltou em unidades — o
+ * valor em reais, de onde sai essa proporção, não passa por esta rota.
  */
 function lucroDe(tip: PublicTip): number {
   const stake = Number(tip.stake_units ?? 0);
   if (tip.status === "green") return stake * (Number(tip.odd ?? 0) - 1);
   if (tip.status === "red") return -stake;
+  if (tip.status === "cashout") return Number(tip.cashout_units ?? 0) - stake;
   return 0;
 }
 

@@ -6,7 +6,7 @@ import { ApiError, deleteTip, patchTip, publishTip } from "@/lib/api";
 import type { Channel, MessageStatus, TipRead, TipUpdate } from "@/types/api";
 
 /** Campos que o backend exige para publicar (REQUIRED_TO_PUBLISH). */
-const OBRIGATORIOS = ["event", "market", "odd", "stake_units"] as const;
+const OBRIGATORIOS = ["event", "market", "odd", "stake", "stake_units"] as const;
 
 const EDITAVEIS = [
   ["event", "Evento", "Flamengo x Palmeiras"],
@@ -14,16 +14,23 @@ const EDITAVEIS = [
   ["odd", "Odd", "1.85"],
   ["stake_units", "Unidades", "2"],
   ["source", "Casa", "Bet365"],
-  ["stake", "Stake (R$)", "150.00"],
+  ["stake", "Stake (valor da aposta em R$)", "150.00"],
   ["link", "Link da aposta", "https://bet365.com/..."],
 ] as const;
 
 type Campo = (typeof EDITAVEIS)[number][0];
 
-/** Rótulo de tela para cada campo — o aviso não pode falar "stake_units". */
-const ROTULOS: Record<string, string> = Object.fromEntries(
-  EDITAVEIS.map(([campo, rotulo]) => [campo, rotulo.toLowerCase()]),
-);
+/**
+ * Rótulo de tela para cada campo — o aviso não pode falar "stake_units".
+ *
+ * O do `stake` é escrito à mão: o rótulo do formulário cabe em cima de um campo
+ * ("Stake (valor da aposta em R$)"), mas no meio de uma frase ele vira ruído.
+ * O texto aqui é o mesmo que o backend usa no 409 do publish.
+ */
+const ROTULOS: Record<string, string> = {
+  ...Object.fromEntries(EDITAVEIS.map(([campo, rotulo]) => [campo, rotulo.toLowerCase()])),
+  stake: "valor da aposta",
+};
 
 /** Casas que o grupo usa. A IA lê o nome do print, mas aqui é lista fechada. */
 const CASAS = ["Bet365", "Betano"] as const;
@@ -63,6 +70,11 @@ function mensagemDe(e: unknown, padrao: string): string {
  *
  * O `stake_units` é o campo que importa — é ele que destrava o publish, e a IA
  * nunca o preenche (o print só traz reais).
+ *
+ * O `stake` (o valor em reais) também é obrigatório: é ele que ancora as
+ * unidades, e sem ele o encerramento antecipado, informado em reais, não teria
+ * proporção para virar unidade. A IA costuma lê-lo do print — quando não lê, o
+ * campo fica marcado como faltando, como qualquer outro.
  */
 export function TipCard({
   tip,

@@ -130,7 +130,9 @@ Por banca, três telas:
 
 - **Banca** (`/banca/<slug>`) — a curva em unidades, os cartões (apostas,
   lucro, ROI, acerto) e a lista de apostas agrupada por mês e dia, cada grupo
-  com o seu saldo. É aqui que se marca green/red.
+  com o seu saldo. É aqui que se marca o resultado. Cada número tem um "?" ao
+  lado com a explicação em uma frase — ROI e "unidade" são jargão de quem já
+  opera banca, e o painel é usado por quem está começando.
 - **Tips** (`/banca/<slug>/tips`) — sobe o print, corrige o que a IA leu
   errado, informa as unidades e publica no canal.
 - **Configurações** (`/banca/<slug>/config`) — nome, endereço público,
@@ -140,6 +142,13 @@ Por banca, três telas:
 
 `/b/<slug>` é o link que o tipster manda para os assinantes. Ela mostra o
 gráfico, os cartões e a lista de apostas — **tudo em unidades**.
+
+Os filtros de **período** (tudo / 90 / 30 / 7 dias) e de **resultado** (ganhas,
+perdidas, encerradas, em aberto) são links, não botões: a página é renderizada
+no servidor, e o recorte escolhido fica na URL — dá para mandar
+`/b/vip-pecanha?periodo=30d` para alguém. O período vale para os números **e**
+para a lista; o resultado recorta só a lista, porque cartões de um resultado
+escolhido a dedo sempre diriam 100% de acerto.
 
 O `<slug>` **sai do nome da banca**, sempre: "Vip Peçanha" vira
 `/b/vip-pecanha`. Não há campo de endereço editável — ter os dois separados
@@ -173,21 +182,43 @@ de deixar o cliente descobrir na hora em que a tip devia sair.
 O token do bot **nunca volta inteiro** da API: o painel recebe só uma pista
 (`8741270881:…s8j8`) para a pessoa reconhecer qual bot está ali.
 
-### Green e red são marcados à mão
+### O resultado é marcado à mão
 
 **Não há API esportiva nesta fase.** Na lista da Banca, cada aposta pendente
-tem três botões na faixa da direita:
+tem quatro botões na faixa da direita:
 
 | Botão | O que faz |
 |---|---|
 | ✓ | green — a aposta ganhou |
 | ✕ | red — a aposta perdeu |
 | ∅ | void — anulada, o stake volta e não conta no ROI |
+| ⇄ | cashout — encerrada antes do fim, pelo valor que a casa ofereceu |
 
 Clicar na faixa de uma aposta já resolvida abre o **desfazer** (volta para
 pendente). O resultado é gravado com `source: "manual"` no `result_raw`, para a
 validação automática da Fase 2 conseguir se distinguir do que foi conferido à
 mão.
+
+#### O encerramento antecipado (cash out)
+
+Encerrar **não é** green nem red: o valor devolvido tanto pode estar acima do
+apostado (lucro) quanto abaixo (prejuízo), e juntá-lo aos outros dois faria a
+taxa de acerto mentir nos dois sentidos. Por isso ele é um status próprio.
+
+O ⇄ abre um campo pedindo **por quanto a aposta foi encerrada, em reais** — é
+como a casa oferece o cash out, na tela em que a pessoa acabou de clicar. As
+unidades saem da proporção com o valor apostado: encerrar 150 reais (2u) por 180
+devolve 2,4u, ou seja +0,4u na banca. A prévia mostra essa conta antes de
+gravar.
+
+É por isso que o **valor da aposta em reais virou campo obrigatório** para
+publicar (junto de evento, mercado, odd e unidades): é ele que ancora as
+unidades. Sem ele o encerramento não teria como virar unidade, e a tip entraria
+na banca valendo zero. A IA costuma lê-lo do print; quando não lê, o campo fica
+marcado como faltando, como qualquer outro.
+
+Na taxa de acerto, um encerramento com saldo positivo conta como acerto — sair
+da aposta ganhando dinheiro é um acerto para quem seguiu a tip.
 
 ## Testando a leitura de prints
 

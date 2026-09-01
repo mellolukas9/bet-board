@@ -1,5 +1,6 @@
 "use client";
 
+import { Ajuda } from "@/components/Ajuda";
 import { formatUnitsSigned } from "@/lib/bets";
 import type { BankrollPoint } from "@/types/api";
 
@@ -64,7 +65,14 @@ export function BankrollChart({
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
       <header className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-sm font-medium">Evolução da banca</h2>
+        <h2 className="flex items-center gap-1.5 text-sm font-medium">
+          Evolução da banca
+          <Ajuda>
+            O lucro somado dia a dia, em unidades. A linha só se mexe quando uma
+            aposta é resolvida — e é a data do resultado que conta, não a do
+            envio. Acima da linha tracejada a banca está no lucro.
+          </Ajuda>
+        </h2>
         <span className="text-xs text-muted">
           {series.length === 0
             ? "sem resultados ainda"

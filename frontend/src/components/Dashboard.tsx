@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { AppShell } from "@/components/AppShell";
+import { Ajuda } from "@/components/Ajuda";
+import { useBanca } from "@/components/AppShell";
 import { BankrollChart } from "@/components/BankrollChart";
 import { BetList, emJogo } from "@/components/BetList";
 import { StatCards } from "@/components/StatCards";
 import { ApiError, getStats, listTips } from "@/lib/api";
 import { formatUnits } from "@/lib/bets";
-import type { BankrollRead, BankrollStats, TipRead } from "@/types/api";
+import type { BankrollStats, TipRead } from "@/types/api";
 
 /** Recortes de período do painel. `dias: null` = a banca inteira. */
 const PERIODOS = [
@@ -21,27 +22,19 @@ const PERIODOS = [
 
 type Periodo = (typeof PERIODOS)[number]["chave"];
 
-/** A tela da banca, já com a moldura em volta. */
-export function Dashboard({ slug }: { slug: string }) {
-  return (
-    <AppShell slug={slug} secao="banca">
-      {(bankroll) => <Banca bankroll={bankroll} />}
-    </AppShell>
-  );
-}
-
 /**
  * O painel de uma banca.
  *
- * Os agregados vêm do `GET /bankrolls/{id}/stats` (o backend enxerga a banca
- * inteira); a lista vem do `/tips` da mesma banca e é filtrada por período
- * aqui — o filtro de data mora só no `/stats`, no backend.
+ * Os agregados vêm do `GET /bankrolls/{id}/stats` e a lista do `/tips` da mesma
+ * banca — os dois com o mesmo `since`, para os cartões e o extrato falarem do
+ * mesmo período.
  *
  * Ambos contam **só tip publicada**: o que está na fila de revisão ainda é
  * rascunho, ninguém do grupo apostou nele, e por isso não há green ou red a
  * confirmar. A aba Tips é onde essas vivem.
  */
-function Banca({ bankroll }: { bankroll: BankrollRead }) {
+export function Dashboard() {
+  const { banca } = useBanca();
   const [periodo, setPeriodo] = useState<Periodo>("tudo");
   const [stats, setStats] = useState<BankrollStats | null>(null);
   const [tips, setTips] = useState<TipRead[]>([]);
@@ -52,16 +45,15 @@ function Banca({ bankroll }: { bankroll: BankrollRead }) {
 
   const buscar = useCallback(async () => {
     const [novasStats, novasTips] = await Promise.all([
-      getStats(bankroll.id, since ? { since } : {}),
-      listTips(bankroll.id, { published: true, limit: 200 }),
+      getStats(banca.id, since ? { since } : {}),
+      listTips(banca.id, {
+        published: true,
+        limit: 200,
+        ...(since ? { since } : {}),
+      }),
     ]);
-    return {
-      stats: novasStats,
-      tips: since
-        ? novasTips.filter((t) => t.created_at.slice(0, 10) >= since)
-        : novasTips,
-    };
-  }, [bankroll.id, since]);
+    return { stats: novasStats, tips: novasTips };
+  }, [banca.id, since]);
 
   /**
    * Carga inicial e troca de período.
@@ -114,7 +106,7 @@ function Banca({ bankroll }: { bankroll: BankrollRead }) {
    */
   function aoMudar(tip: TipRead) {
     setTips((atuais) => atuais.map((t) => (t.id === tip.id ? tip : t)));
-    void getStats(bankroll.id, since ? { since } : {})
+    void getStats(banca.id, since ? { since } : {})
       .then(setStats)
       .catch(() => {
         /* o número fica um instante velho; o próximo Atualizar corrige */
@@ -126,7 +118,7 @@ function Banca({ bankroll }: { bankroll: BankrollRead }) {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
           {PERIODOS.map((p) => (
             <button
               key={p.chave}
@@ -144,13 +136,23 @@ function Banca({ bankroll }: { bankroll: BankrollRead }) {
               {p.rotulo}
             </button>
           ))}
+          <span className="ml-1">
+            <Ajuda>
+              Recorta os números, o gráfico e a lista pela data em que a aposta
+              foi publicada no grupo. &quot;Tudo&quot; é a banca desde o começo.
+            </Ajuda>
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
           {pendentes > 0 && (
-            <span className="text-xs text-muted">
+            <span className="flex items-center gap-1.5 text-xs text-muted">
               {formatUnits(emJogo(tips))} em jogo em {pendentes}{" "}
               {pendentes === 1 ? "aposta" : "apostas"}
+              <Ajuda lado="esquerda">
+                O que já foi para o grupo e ainda não tem resultado. Não entra no
+                lucro nem no ROI enquanto não for marcado.
+              </Ajuda>
             </span>
           )}
           <button
@@ -178,7 +180,7 @@ function Banca({ bankroll }: { bankroll: BankrollRead }) {
 
       {stats && stats.needs_review > 0 && (
         <Link
-          href={`/banca/${bankroll.slug}/tips`}
+          href={`/banca/${banca.slug}/tips`}
           className="flex items-center justify-between gap-3 rounded-xl border border-amber/30 bg-amber/10 px-4 py-3 text-sm transition hover:bg-amber/15"
         >
           <span>

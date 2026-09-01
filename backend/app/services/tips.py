@@ -8,7 +8,7 @@ unidades ("2u") e o print só mostra reais, então a tip espera o admin informar
 ``stake_units`` na revisão antes de virar mensagem.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -26,7 +26,17 @@ logger = get_logger(__name__)
 
 #: Sem estes campos a mensagem sai capenga — a tip fica na fila de revisão.
 #: ``stake_units`` entra na lista porque só o admin sabe convertê-lo.
-REQUIRED_TO_PUBLISH: tuple[str, ...] = ("event", "market", "odd", "stake_units")
+#:
+#: ``stake`` (o valor em reais) entra porque é ele que ancora as unidades: o
+#: encerramento antecipado é informado em reais e vira unidades pela proporção
+#: com o stake. Sem ele, uma tip encerrada não tem como entrar na banca.
+REQUIRED_TO_PUBLISH: tuple[str, ...] = (
+    "event",
+    "market",
+    "odd",
+    "stake",
+    "stake_units",
+)
 
 #: Nome de coluna não é nome de campo na tela. O admin lê "unidades", não
 #: "stake_units" — e essa mensagem chega até ele, no 409 do publish.
@@ -34,6 +44,7 @@ ROTULOS: dict[str, str] = {
     "event": "evento",
     "market": "mercado",
     "odd": "odd",
+    "stake": "valor da aposta",
     "stake_units": "unidades",
 }
 
@@ -48,6 +59,10 @@ class TipNotDiscardable(RuntimeError):
 
 class TipNotResolvable(RuntimeError):
     """A tip ainda não foi publicada; não há resultado a marcar."""
+
+
+class TipNotCashable(RuntimeError):
+    """Falta o que a conta do encerramento precisa (o stake da tip)."""
 
 
 def create_tip_from_image(
@@ -120,12 +135,17 @@ def list_tips(
     status: TipStatus | None = None,
     needs_review: bool | None = None,
     published_only: bool = False,
+    since: date | None = None,
+    until: date | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Tip]:
     """Lista as tips **de uma banca**, mais recentes primeiro.
 
     ``published_only`` é o recorte da banca: só entra o que foi para o grupo.
+    ``since``/``until`` recortam por ``created_at``, inclusive nas duas pontas —
+    o mesmo campo e o mesmo critério do ``/stats``, para lista e cartões
+    falarem do mesmo período.
     """
     stmt = (
         select(Tip)
@@ -139,6 +159,10 @@ def list_tips(
         stmt = stmt.where(Tip.status == status)
     if needs_review is not None:
         stmt = stmt.where(Tip.needs_review == needs_review)
+    if since is not None:
+        stmt = stmt.where(Tip.created_at >= datetime.combine(since, datetime.min.time()))
+    if until is not None:
+        stmt = stmt.where(Tip.created_at <= datetime.combine(until, datetime.max.time()))
 
     stmt = stmt.order_by(Tip.id.desc()).limit(limit).offset(offset)
     return list(session.scalars(stmt))
@@ -193,21 +217,34 @@ def update_tip(session: Session, tip: Tip, data: TipUpdate) -> Tip:
     return tip
 
 
-def set_result(session: Session, tip: Tip, status: TipStatus, note: str | None = None) -> Tip:
-    """Grava o resultado que o **admin** informou (green / red / void).
+def set_result(
+    session: Session,
+    tip: Tip,
+    status: TipStatus,
+    note: str | None = None,
+    *,
+    cashout_amount: Decimal | None = None,
+) -> Tip:
+    """Grava o resultado que o **admin** informou (green / red / void / cashout).
 
     Nesta fase não há API esportiva: quem confere o placar é o dono do grupo,
     pelo painel. Por isso o ``result_raw`` guarda ``source: "manual"`` — quando
     a validação automática da Fase 2 entrar, dá para separar o que foi conferido
     à mão do que veio de fora.
 
+    ``cashout`` é o encerramento antecipado: a aposta saiu antes do fim do jogo,
+    pelo valor que a casa ofereceu. Ele **pode dar lucro ou prejuízo** — o que
+    define é a diferença para o stake, e não há green nem red a declarar.
+
     Voltar para ``pending`` desfaz o resultado (erro de clique acontece) e limpa
-    o ``resolved_at``.
+    o ``resolved_at`` — e, com ele, o valor do encerramento.
 
     Raises:
         TipNotResolvable: a tip ainda não foi publicada. Aposta que não chegou
             ao grupo não tem resultado a confirmar — e marcá-la mexeria no
             lucro da banca por algo que ninguém seguiu.
+        TipNotCashable: encerramento sem valor informado, ou numa tip sem o
+            stake em reais — é dele que sai a proporção em unidades.
     """
     if not was_published(tip):
         raise TipNotResolvable(
@@ -215,7 +252,13 @@ def set_result(session: Session, tip: Tip, status: TipStatus, note: str | None =
             "marcar o resultado."
         )
 
+    if status is TipStatus.CASHOUT:
+        _check_cashout(tip, cashout_amount)
+
     tip.status = status
+    # o valor só sobrevive no encerramento: marcar green depois de encerrar
+    # deixaria para trás um número que não descreve mais o resultado
+    tip.cashout_amount = cashout_amount if status is TipStatus.CASHOUT else None
 
     if status is TipStatus.PENDING:
         tip.resolved_at = None
@@ -228,10 +271,36 @@ def set_result(session: Session, tip: Tip, status: TipStatus, note: str | None =
             "note": note,
             "at": tip.resolved_at.isoformat(),
         }
+        if status is TipStatus.CASHOUT:
+            tip.result_raw["cashout_amount"] = str(cashout_amount)
 
     session.flush()
     logger.info("tips.result_set", extra={"tip_id": tip.id, "status": status.value})
     return tip
+
+
+def _check_cashout(tip: Tip, cashout_amount: Decimal | None) -> None:
+    """O encerramento precisa do valor devolvido e do valor apostado.
+
+    O painel converte um no outro pela proporção (ver ``Tip.cashout_units``);
+    com stake zerado ou ausente a conta seria uma divisão por zero, e a tip
+    entraria na banca valendo nada.
+    """
+    if cashout_amount is None:
+        raise TipNotCashable(
+            "Informe por quanto a aposta foi encerrada (o valor devolvido pela "
+            "casa, em reais)."
+        )
+    if not tip.stake:
+        raise TipNotCashable(
+            "Esta tip não tem o valor da aposta em reais, e é dele que sai a "
+            "proporção do encerramento. Preencha o valor da aposta antes."
+        )
+    if tip.stake_units is None:
+        raise TipNotCashable(
+            "Esta tip não tem as unidades informadas — sem elas o encerramento "
+            "não entra na banca."
+        )
 
 
 def discard_tip(session: Session, tip: Tip) -> None:

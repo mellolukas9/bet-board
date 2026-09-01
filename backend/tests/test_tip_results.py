@@ -20,6 +20,7 @@ def make_tip(
     *,
     status: TipStatus = TipStatus.PENDING,
     published: bool = True,
+    stake: Decimal | None = Decimal("150.00"),
     **kwargs,
 ) -> Tip:
     """Publicada por padrão: só tip que foi ao grupo tem resultado a marcar."""
@@ -30,7 +31,7 @@ def make_tip(
         event="Flamengo x Palmeiras",
         market="Mais de 2.5 gols",
         odd=Decimal("1.85"),
-        stake=Decimal("150.00"),
+        stake=stake,
         stake_units=Decimal("2"),
         currency="BRL",
         status=status,
@@ -138,3 +139,103 @@ def test_corrigir_outros_campos_continua_valendo_sem_publicar(
     response = client.patch(f"/tips/{tip.id}", json={"stake_units": "3"})
 
     assert response.status_code == 200
+
+
+# --- encerramento antecipado (cash out) ---------------------------------------
+
+
+def test_encerramento_com_lucro(client: TestClient, db_session, bankroll) -> None:
+    """Saiu da aposta por mais do que apostou: 180 devolvidos sobre 150 apostados."""
+    tip = make_tip(db_session, bankroll)
+
+    response = client.post(
+        f"/tips/{tip.id}/result",
+        json={"status": "cashout", "cashout_amount": "180.00"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "cashout"
+    assert Decimal(body["cashout_amount"]) == Decimal("180")
+    # 180/150 do stake -> 1,2x as 2 unidades apostadas
+    assert Decimal(body["cashout_units"]) == Decimal("2.4")
+    assert body["resolved_at"] is not None
+
+
+def test_encerramento_com_prejuizo(client: TestClient, db_session, bankroll) -> None:
+    """Encerrar não é sinônimo de lucro — a casa também oferece menos que o stake."""
+    tip = make_tip(db_session, bankroll)
+
+    body = client.post(
+        f"/tips/{tip.id}/result",
+        json={"status": "cashout", "cashout_amount": "60.00"},
+    ).json()
+
+    assert Decimal(body["cashout_units"]) == Decimal("0.8")
+
+
+def test_encerramento_exige_o_valor_devolvido(client: TestClient, db_session, bankroll) -> None:
+    tip = make_tip(db_session, bankroll)
+
+    response = client.post(f"/tips/{tip.id}/result", json={"status": "cashout"})
+
+    assert response.status_code == 422
+    assert "encerrada" in response.text
+
+
+def test_valor_de_encerramento_nao_vale_para_os_outros_resultados(
+    client: TestClient, db_session, bankroll
+) -> None:
+    """Green com valor de encerramento seria um resultado contando duas histórias."""
+    tip = make_tip(db_session, bankroll)
+
+    response = client.post(
+        f"/tips/{tip.id}/result", json={"status": "green", "cashout_amount": "180.00"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_encerramento_sem_valor_da_aposta_e_recusado(
+    client: TestClient, db_session, bankroll
+) -> None:
+    """Sem o stake em reais não há proporção — e a tip entraria na banca valendo nada."""
+    tip = make_tip(db_session, bankroll, stake=None)
+
+    response = client.post(
+        f"/tips/{tip.id}/result",
+        json={"status": "cashout", "cashout_amount": "180.00"},
+    )
+
+    assert response.status_code == 409
+    assert "valor da aposta" in response.json()["detail"]
+
+
+def test_desfazer_o_encerramento_limpa_o_valor(client: TestClient, db_session, bankroll) -> None:
+    """Voltar para pendente apaga o número: ele descreve um resultado que sumiu."""
+    tip = make_tip(db_session, bankroll)
+    client.post(
+        f"/tips/{tip.id}/result",
+        json={"status": "cashout", "cashout_amount": "180.00"},
+    )
+
+    body = client.post(f"/tips/{tip.id}/result", json={"status": "pending"}).json()
+
+    assert body["status"] == "pending"
+    assert body["cashout_amount"] is None
+    assert body["cashout_units"] is None
+
+
+def test_marcar_green_depois_do_encerramento_apaga_o_valor(
+    client: TestClient, db_session, bankroll
+) -> None:
+    tip = make_tip(db_session, bankroll)
+    client.post(
+        f"/tips/{tip.id}/result",
+        json={"status": "cashout", "cashout_amount": "180.00"},
+    )
+
+    body = client.post(f"/tips/{tip.id}/result", json={"status": "green"}).json()
+
+    assert body["status"] == "green"
+    assert body["cashout_amount"] is None

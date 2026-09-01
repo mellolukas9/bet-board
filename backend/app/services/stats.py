@@ -25,27 +25,42 @@ ZERO = Decimal("0")
 
 #: Resultados que entram no cálculo de lucro. `void` (anulada) devolve o stake,
 #: então não é acerto nem erro — fica de fora do ROI e da taxa de acerto.
-SETTLED = (TipStatus.GREEN, TipStatus.RED)
+#:
+#: `cashout` (encerrada antes do fim) entra: o dinheiro já mudou de lado, e o
+#: saldo dela é tão real quanto o de um green.
+SETTLED = (TipStatus.GREEN, TipStatus.RED, TipStatus.CASHOUT)
 
 
 def returned_amount(tip: Tip, *, in_units: bool) -> Decimal:
-    """Quanto voltou da aposta ("Ganho"): stake x odd no green, 0 no red."""
+    """Quanto voltou da aposta ("Ganho"): stake x odd no green, 0 no red.
+
+    No encerramento antecipado quem diz é a casa: voltou o valor do cash out,
+    nem o retorno cheio nem zero.
+    """
     stake = _stake(tip, in_units=in_units)
     if tip.status is TipStatus.GREEN:
         return stake * _odd(tip)
     if tip.status is TipStatus.RED:
         return ZERO
+    if tip.status is TipStatus.CASHOUT:
+        return _cashout(tip, in_units=in_units)
     # pendente ou anulada: o dinheiro ainda é (ou voltou a ser) do apostador
     return stake if tip.status is TipStatus.VOID else ZERO
 
 
 def profit(tip: Tip, *, in_units: bool) -> Decimal:
-    """Lucro da tip: ``stake x (odd - 1)`` no green, ``-stake`` no red, 0 no resto."""
+    """Lucro da tip: ``stake x (odd - 1)`` no green, ``-stake`` no red, 0 no resto.
+
+    O encerramento é a diferença entre o que voltou e o que foi apostado — por
+    isso ele pode dar lucro **ou** prejuízo, sem ser green nem red.
+    """
     stake = _stake(tip, in_units=in_units)
     if tip.status is TipStatus.GREEN:
         return stake * (_odd(tip) - 1)
     if tip.status is TipStatus.RED:
         return -stake
+    if tip.status is TipStatus.CASHOUT:
+        return _cashout(tip, in_units=in_units) - stake
     return ZERO
 
 
@@ -81,17 +96,31 @@ def bankroll_summary(
         "green": counts[TipStatus.GREEN],
         "red": counts[TipStatus.RED],
         "void": counts[TipStatus.VOID],
+        "cashout": counts[TipStatus.CASHOUT],
         "needs_review": sum(1 for t in tips if t.needs_review),
         "staked_units": _q(staked_units),
         "staked_brl": _q(staked_brl),
         "profit_units": _q(profit_units),
         "profit_brl": _q(profit_brl),
         "roi": _percent(profit_units, staked_units),
-        "hit_rate": _percent(
-            Decimal(counts[TipStatus.GREEN]), Decimal(len(settled))
-        ),
+        "hit_rate": _percent(Decimal(_hits(settled)), Decimal(len(settled))),
         "series": _daily_series(settled),
     }
+
+
+def _hits(settled: list[Tip]) -> int:
+    """Quantas apostas resolvidas terminaram no positivo.
+
+    Green é acerto por definição. Encerramento entra pelo saldo: sair da aposta
+    ganhando dinheiro é um acerto para quem seguiu a tip, e sair perdendo não é
+    — chamar todo cash out de erro puniria justamente a saída que deu lucro.
+    """
+    return sum(
+        1
+        for t in settled
+        if t.status is TipStatus.GREEN
+        or (t.status is TipStatus.CASHOUT and profit(t, in_units=True) > 0)
+    )
 
 
 def _daily_series(settled: list[Tip]) -> list[dict]:
@@ -151,6 +180,12 @@ def _settled_at(tip: Tip) -> datetime:
 
 def _stake(tip: Tip, *, in_units: bool) -> Decimal:
     value = tip.stake_units if in_units else tip.stake
+    return ZERO if value is None else Decimal(value)
+
+
+def _cashout(tip: Tip, *, in_units: bool) -> Decimal:
+    """O valor devolvido no encerramento, em reais ou em unidades."""
+    value = tip.cashout_units if in_units else tip.cashout_amount
     return ZERO if value is None else Decimal(value)
 
 

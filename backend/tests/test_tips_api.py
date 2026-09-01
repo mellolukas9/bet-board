@@ -619,3 +619,34 @@ def test_empty_link_clears_the_field(client, bankroll, use_extractor) -> None:
     body = client.patch(f"/tips/{tip_id}", json={"link": ""}).json()
 
     assert body["link"] is None
+
+
+def test_refuses_to_publish_without_the_bet_amount(
+    client, bankroll, use_extractor, use_senders
+) -> None:
+    """O valor em reais ancora as unidades — sem ele o encerramento não tem conta."""
+    use_extractor(COMPLETE)
+    use_senders(FakeSender(Channel.TELEGRAM))
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+    client.patch(f"/tips/{tip_id}", json={"stake": None})
+
+    response = client.post(f"/tips/{tip_id}/publish")
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert "valor da aposta" in detail
+    assert "stake" not in detail.replace("valor da aposta", "")
+
+
+def test_erasing_the_bet_amount_sends_the_tip_back_to_review(
+    client, bankroll, use_extractor
+) -> None:
+    use_extractor(COMPLETE)
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+    assert client.get(f"/tips/{tip_id}").json()["needs_review"] is False
+
+    body = client.patch(f"/tips/{tip_id}", json={"stake": None}).json()
+
+    assert body["needs_review"] is True

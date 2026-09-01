@@ -8,7 +8,8 @@ export type HealthResponse = {
   database: "up" | "down";
 };
 
-export type TipStatus = "pending" | "green" | "red" | "void";
+/** `cashout` é o encerramento antecipado: saiu da aposta antes do fim do jogo. */
+export type TipStatus = "pending" | "green" | "red" | "void" | "cashout";
 export type Channel = "telegram" | "whatsapp";
 export type MessageStatus = "sent" | "failed";
 
@@ -36,6 +37,10 @@ export type TipRead = {
   stake: string | null;
   /** null até o admin informar — a IA nunca preenche */
   stake_units: string | null;
+  /** quanto a casa devolveu no encerramento antecipado, em reais */
+  cashout_amount: string | null;
+  /** o mesmo valor em unidades, na proporção do stake (derivado no backend) */
+  cashout_units: string | null;
   currency: string;
   /** link do bilhete na casa; vai na mensagem do grupo */
   link: string | null;
@@ -76,6 +81,8 @@ export type TipPublishResponse = {
 /** Corpo do POST /tips/{id}/result — o admin diz o resultado. */
 export type TipResultBody = {
   status: TipStatus;
+  /** obrigatório em `cashout`, recusado nos demais: o valor devolvido, em reais */
+  cashout_amount?: string | null;
   note?: string | null;
 };
 
@@ -193,6 +200,8 @@ export type BankrollStats = {
   green: number;
   red: number;
   void: number;
+  /** encerradas antes do fim (cash out) */
+  cashout: number;
   needs_review: number;
   staked_units: string;
   staked_brl: string;
@@ -200,7 +209,7 @@ export type BankrollStats = {
   profit_brl: string;
   /** lucro / apostado, em % */
   roi: string;
-  /** greens / resolvidas, em % */
+  /** resolvidas no positivo / resolvidas, em % */
   hit_rate: string;
   series: BankrollPoint[];
 };
@@ -215,6 +224,8 @@ export type PublicTip = {
   source: string | null;
   odd: string | null;
   stake_units: string | null;
+  /** o que voltou de um encerramento antecipado, em unidades (null nas demais) */
+  cashout_units: string | null;
   status: TipStatus;
   created_at: string;
   resolved_at: string | null;
@@ -234,6 +245,7 @@ export type PublicStats = {
   green: number;
   red: number;
   void: number;
+  cashout: number;
   staked_units: string;
   profit_units: string;
   roi: string;

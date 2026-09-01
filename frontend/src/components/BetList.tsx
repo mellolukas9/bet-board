@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Ajuda } from "@/components/Ajuda";
 import { ApiError, setTipResult } from "@/lib/api";
 import {
   ROTULO_STATUS,
@@ -24,8 +25,9 @@ import type { TipRead, TipStatus } from "@/types/api";
  * A lista de apostas do painel, agrupada por mês e por dia — cada grupo com o
  * seu saldo à direita, como num extrato.
  *
- * É aqui que o admin **diz se a tip deu green ou red**: não há API esportiva
- * nesta fase, o resultado é conferido a olho e marcado no botão.
+ * É aqui que o admin **diz como a tip terminou**: não há API esportiva nesta
+ * fase, o resultado é conferido a olho e marcado no botão. São quatro saídas —
+ * ganha, perdida, anulada e encerrada antes do fim (o cash out da casa).
  *
  * A lista recebe só tip **publicada**. Aposta que não chegou ao grupo não tem
  * resultado a confirmar, e o backend recusa marcá-la (409).
@@ -54,6 +56,15 @@ export function BetList({
 
   return (
     <div className="space-y-5">
+      <div className="flex items-center justify-end gap-1.5 text-xs text-muted">
+        Como marcar o resultado
+        <Ajuda lado="esquerda">
+          Na faixa à direita de cada aposta: ✓ ganha, ✕ perdida, ∅ anulada (a
+          casa devolveu o valor) e ⇄ encerrada antes do fim, quando você tirou o
+          dinheiro no meio do jogo. Já marcada, clique na faixa para desfazer.
+        </Ajuda>
+      </div>
+
       {agrupar(tips).map((mes) => (
         <section key={mes.chave}>
           <CabecalhoDeGrupo
@@ -141,16 +152,18 @@ function BetRow({
   const [salvando, setSalvando] = useState<TipStatus | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [desfazendo, setDesfazendo] = useState(false);
+  const [encerrando, setEncerrando] = useState(false);
 
   const resultado = lucro(tip);
   const semUnidades = tip.stake_units === null;
 
-  async function marcar(status: TipStatus) {
+  async function marcar(status: TipStatus, cashoutAmount?: string) {
     setSalvando(status);
     setErro(null);
     try {
-      onChange(await setTipResult(tip.id, status));
+      onChange(await setTipResult(tip.id, status, { cashoutAmount }));
       setDesfazendo(false);
+      setEncerrando(false);
     } catch (e) {
       setErro(
         e instanceof ApiError || e instanceof Error
@@ -219,9 +232,24 @@ function BetRow({
         salvando={salvando}
         desfazendo={desfazendo}
         onDesfazer={() => setDesfazendo((v) => !v)}
-        onMarcar={(status) => void marcar(status)}
+        onMarcar={(status) => {
+          if (status === "cashout") {
+            setEncerrando(true);
+            return;
+          }
+          void marcar(status);
+        }}
       />
       </article>
+
+      {encerrando && (
+        <FormularioDeEncerramento
+          tip={tip}
+          salvando={salvando === "cashout"}
+          onCancelar={() => setEncerrando(false)}
+          onConfirmar={(valor) => void marcar("cashout", valor)}
+        />
+      )}
 
       {erro && (
         <p role="alert" className="border-t border-red/20 bg-red/10 px-4 py-2 text-xs text-red">
@@ -276,42 +304,52 @@ function FaixaDeResultado({
 }) {
   if (tip.status === "pending") {
     return (
-      <div className="flex w-14 shrink-0 flex-col border-l border-line">
+      <div className="grid w-16 shrink-0 grid-cols-2 grid-rows-2 border-l border-line">
         <BotaoDeResultado
-          rotulo="Green"
+          rotulo="Ganha"
           simbolo="✓"
           classe="text-green hover:bg-green/20"
           ocupado={salvando === "green"}
           onClick={() => onMarcar("green")}
         />
         <BotaoDeResultado
-          rotulo="Red"
+          rotulo="Perdida"
           simbolo="✕"
           classe="text-red hover:bg-red/20"
           ocupado={salvando === "red"}
           onClick={() => onMarcar("red")}
         />
         <BotaoDeResultado
-          rotulo="Anulada (stake devolvido)"
+          rotulo="Anulada (a casa devolveu o valor apostado)"
           simbolo="∅"
           classe="text-muted hover:bg-white/10"
           ocupado={salvando === "void"}
           onClick={() => onMarcar("void")}
         />
+        <BotaoDeResultado
+          rotulo="Encerrada antes do fim (cash out)"
+          simbolo="⇄"
+          classe="text-accent hover:bg-accent/20"
+          ocupado={salvando === "cashout"}
+          onClick={() => onMarcar("cashout")}
+        />
       </div>
     );
   }
 
+  // no encerramento não há cor de resultado a herdar: quem diz se ele foi bom
+  // ou ruim é o saldo, e ele pode ser qualquer um dos dois
+  const saldo = lucro(tip);
   const cor =
-    tip.status === "green"
+    tip.status === "green" || (tip.status === "cashout" && saldo > 0)
       ? "bg-green/15 text-green"
-      : tip.status === "red"
+      : tip.status === "red" || (tip.status === "cashout" && saldo < 0)
         ? "bg-red/15 text-red"
         : "bg-white/5 text-muted";
 
   if (desfazendo) {
     return (
-      <div className="flex w-14 shrink-0 flex-col border-l border-line">
+      <div className="flex w-16 shrink-0 flex-col border-l border-line">
         <BotaoDeResultado
           rotulo="Desfazer: volta para pendente"
           simbolo="↺"
@@ -335,7 +373,7 @@ function FaixaDeResultado({
       type="button"
       onClick={onDesfazer}
       title={`${ROTULO_STATUS[tip.status]} — clique para desfazer`}
-      className={`w-14 shrink-0 border-l border-line text-[11px] font-medium transition hover:brightness-125 ${cor}`}
+      className={`w-16 shrink-0 border-l border-line text-[11px] font-medium transition hover:brightness-125 ${cor}`}
     >
       <span
         className="inline-block py-2"
@@ -345,6 +383,116 @@ function FaixaDeResultado({
       </span>
     </button>
   );
+}
+
+/**
+ * Por quanto a aposta foi encerrada.
+ *
+ * O valor é pedido em **reais** porque é assim que a casa oferece o cash out,
+ * na tela em que a pessoa acabou de clicar. As unidades saem da proporção com o
+ * valor apostado, e a prévia mostra o resultado dessa conta antes de gravar —
+ * encerrar por menos do que apostou é um prejuízo legítimo, mas não pode ser
+ * uma surpresa.
+ */
+function FormularioDeEncerramento({
+  tip,
+  salvando,
+  onCancelar,
+  onConfirmar,
+}: {
+  tip: TipRead;
+  salvando: boolean;
+  onCancelar: () => void;
+  onConfirmar: (valor: string) => void;
+}) {
+  const [texto, setTexto] = useState("");
+
+  const apostado = Number(tip.stake ?? 0);
+  const devolvido = paraNumero(texto);
+  const valido = devolvido !== null && devolvido >= 0 && apostado > 0;
+  const saldo = valido ? (devolvido / apostado - 1) * stakeUnits(tip) : 0;
+
+  // Tip publicada antes de o valor em reais virar obrigatório: sem ele não há
+  // proporção, e um campo com o botão desligado não diria por quê.
+  if (apostado <= 0) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 border-t border-amber/20 bg-amber/10 px-4 py-3 text-xs text-amber">
+        <p>
+          Esta aposta não tem o valor em reais, e é dele que sai a proporção do
+          encerramento. Marque ganha, perdida ou anulada.
+        </p>
+        <button
+          type="button"
+          onClick={onCancelar}
+          className="ml-auto rounded-lg border border-line px-3 py-1.5 text-sm text-muted transition hover:bg-white/5 hover:text-white"
+        >
+          Fechar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valido) onConfirmar(String(devolvido));
+      }}
+      className="flex flex-wrap items-center gap-2 border-t border-accent/20 bg-accent/5 px-4 py-3 text-sm"
+    >
+      <label className="flex items-center gap-2">
+        <span className="text-muted">Encerrada por R$</span>
+        <input
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          inputMode="decimal"
+          autoFocus
+          placeholder={apostado ? apostado.toFixed(2).replace(".", ",") : "0,00"}
+          className="w-28 rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-sm tabular-nums outline-none transition focus:border-accent/60"
+        />
+      </label>
+
+      <span className="text-xs text-muted">
+        apostado {formatMoney(tip.stake)} ({formatUnits(tip.stake_units)})
+      </span>
+
+      {valido && (
+        <span
+          className={`text-xs font-semibold tabular-nums ${
+            saldo > 0 ? "text-green" : saldo < 0 ? "text-red" : "text-muted"
+          }`}
+        >
+          → {formatUnitsSigned(saldo)} na banca
+        </span>
+      )}
+
+      <div className="ml-auto flex gap-2">
+        <button
+          type="button"
+          onClick={onCancelar}
+          disabled={salvando}
+          className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          disabled={!valido || salvando}
+          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent/85 disabled:opacity-40"
+        >
+          {salvando ? "Encerrando…" : "Encerrar"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Aceita "180,50" e "180.50" — o teclado brasileiro dá a vírgula. */
+function paraNumero(texto: string): number | null {
+  const limpo = texto.trim().replace(",", ".");
+  if (limpo === "") return null;
+  const n = Number(limpo);
+  return Number.isFinite(n) ? n : null;
 }
 
 function BotaoDeResultado({
