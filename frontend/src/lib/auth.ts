@@ -34,3 +34,40 @@ export function setToken(token: string, expiresAt: string): void {
 export function clearToken(): void {
   document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
 }
+
+/** Os dois prazos de uma sessão, em milissegundos desde a época. */
+export type PrazoDaSessao = {
+  /** quando o token deixa de valer, se ninguém renovar */
+  expiraEm: number;
+  /** de quanto é a janela inteira — é o backend que decide, não o painel */
+  janelaMs: number;
+};
+
+/**
+ * Lê os prazos do próprio token.
+ *
+ * O corpo de um JWT é base64, não é segredo: quem tem o token já sabe tudo o
+ * que está escrito nele. Ler daqui evita guardar a validade num segundo lugar,
+ * que sairia de sincronia com o token na primeira renovação.
+ *
+ * `null` quando o token não é um JWT legível — aí quem manda é o servidor, que
+ * vai recusá-lo no próximo pedido.
+ */
+export function prazoDaSessao(token: string): PrazoDaSessao | null {
+  try {
+    const corpo = token.split(".")[1];
+    if (!corpo) return null;
+
+    const json = atob(corpo.replace(/-/g, "+").replace(/_/g, "/"));
+    const { exp, iat } = JSON.parse(json) as { exp?: number; iat?: number };
+    if (typeof exp !== "number") return null;
+
+    return {
+      expiraEm: exp * 1000,
+      // sem `iat` (token antigo), assume a janela cheia a partir de agora
+      janelaMs: typeof iat === "number" ? (exp - iat) * 1000 : exp * 1000 - Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}

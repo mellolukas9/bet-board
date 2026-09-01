@@ -4,6 +4,14 @@ A senha é comparada contra um hash PBKDF2 (``hashlib``, sem dependência nova) 
 a sessão é um JWT HS256 assinado com ``AUTH_SECRET_KEY``, com o **id do usuário**
 no ``sub``.
 
+A sessão tem **dois prazos**, e o token carrega os dois:
+
+* ``exp`` — a inatividade. Vale poucos minutos e é renovado enquanto a pessoa
+  usa o painel. Parou de mexer, ninguém renova, e o token morre no servidor.
+* ``abs`` — o teto. Por mais ativa que a pessoa esteja, passado ele a senha é
+  pedida de novo. Sem esse limite, uma aba aberta renovaria a sessão para
+  sempre.
+
 Quem é o usuário e se ele existe é assunto de ``app.services.users`` — aqui só
 mora a criptografia.
 """
@@ -13,6 +21,7 @@ import hashlib
 import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 
 import jwt
 
@@ -35,6 +44,15 @@ _EPHEMERAL_SECRET = secrets.token_urlsafe(48)
 
 class AuthError(RuntimeError):
     """Credencial inválida, conta desativada ou token expirado."""
+
+
+class Sessao(NamedTuple):
+    """O que um token válido diz."""
+
+    #: id do usuário, como string (o ``sub`` do JWT)
+    subject: str
+    #: até quando esta sessão pode ser renovada, por mais ativa que a pessoa esteja
+    limite: datetime
 
 
 def hash_password(password: str, *, iterations: int = _ITERATIONS) -> str:
@@ -61,39 +79,76 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(candidate, expected)
 
 
-def create_access_token(subject: str) -> tuple[str, datetime]:
+def create_access_token(
+    subject: str, *, limite: datetime | None = None
+) -> tuple[str, datetime]:
     """Assina o JWT da sessão para o ``subject`` (o id do usuário, como string).
 
-    Devolve ``(token, expiração)``.
+    O ``exp`` é a janela de inatividade; ``limite`` é o teto absoluto da sessão,
+    que a renovação **carrega adiante** em vez de recalcular — é o que impede
+    que renovar para sempre valha por não expirar nunca. Sem ele (é o caso do
+    login), o teto nasce agora.
+
+    Devolve ``(token, expiração)``. A expiração nunca passa do teto: perto do
+    fim, a última renovação vale menos que a janela cheia.
     """
     settings = get_settings()
-    expires_at = datetime.now(UTC) + timedelta(minutes=settings.auth_token_ttl_minutes)
+    agora = datetime.now(UTC)
+
+    if limite is None:
+        limite = agora + timedelta(minutes=settings.auth_token_ttl_minutes)
+
+    expires_at = min(agora + timedelta(minutes=settings.auth_idle_timeout_minutes), limite)
 
     token = jwt.encode(
-        {"sub": subject, "iat": datetime.now(UTC), "exp": expires_at},
+        {
+            "sub": subject,
+            "iat": agora,
+            "exp": expires_at,
+            "abs": int(limite.timestamp()),
+        },
         _secret(),
         algorithm=_JWT_ALGORITHM,
     )
     return token, expires_at
 
 
-def decode_access_token(token: str) -> str:
-    """Devolve o ``sub`` do token.
+def decode_access_token(token: str) -> Sessao:
+    """Devolve o ``sub`` e o teto da sessão.
 
     Raises:
-        AuthError: token inválido, adulterado ou expirado.
+        AuthError: token inválido, adulterado ou expirado (por inatividade ou
+            por ter passado do teto).
     """
     try:
         payload = jwt.decode(token, _secret(), algorithms=[_JWT_ALGORITHM])
     except jwt.ExpiredSignatureError as exc:
-        raise AuthError("Sessão expirada. Entre de novo.") from exc
+        raise AuthError("Sessão expirada por inatividade. Entre de novo.") from exc
     except jwt.InvalidTokenError as exc:
         raise AuthError("Token inválido.") from exc
 
     subject = payload.get("sub")
     if not isinstance(subject, str) or not subject:
         raise AuthError("Token inválido.")
-    return subject
+
+    limite = _limite_de(payload)
+    if limite <= datetime.now(UTC):
+        raise AuthError("Sessão expirada. Entre de novo.")
+
+    return Sessao(subject=subject, limite=limite)
+
+
+def _limite_de(payload: dict) -> datetime:
+    """O teto gravado no token.
+
+    Token emitido antes de o teto existir não tem o campo; nesse caso ele vale
+    o próprio ``exp``, e a sessão simplesmente não é renovável. Ninguém é
+    deslogado no meio de um deploy por causa de um campo novo.
+    """
+    bruto = payload.get("abs")
+    if not isinstance(bruto, (int, float)):
+        bruto = payload["exp"]
+    return datetime.fromtimestamp(bruto, UTC)
 
 
 def _secret() -> str:

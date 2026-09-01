@@ -114,13 +114,13 @@ lá só mantém uma senha em texto no painel do host.
 Volte ao Render e corrija `CORS_ORIGINS` para o domínio real da Vercel:
 
 ```
-https://bet-board.vercel.app
+https://bet-board-tau.vercel.app
 ```
 
 Aceita mais de um, separados por vírgula:
 
 ```
-https://bet-board.vercel.app,https://painel.seudominio.com
+https://bet-board-tau.vercel.app,https://painel.seudominio.com
 ```
 
 Salve — o Render reinicia sozinho.
@@ -170,7 +170,7 @@ assistente e liga a página pública quando quiser.
 
 ```
 DATABASE_URL=postgresql://…neon.tech/neondb?sslmode=require
-CORS_ORIGINS=https://bet-board.vercel.app
+CORS_ORIGINS=https://bet-board-tau.vercel.app
 AUTH_SECRET_KEY=<gerada pelo Render>
 AUTH_TOKEN_TTL_MINUTES=720
 SUPERUSER_USERNAME=lucas          # apague a senha depois do 1º deploy

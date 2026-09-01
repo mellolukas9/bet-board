@@ -1,4 +1,6 @@
-"""Login e isolamento entre contas."""
+"""Login, renovação da sessão e isolamento entre contas."""
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,7 +38,7 @@ def test_login_devolve_token(anon_client: TestClient, user: User):
     assert body["token_type"] == "bearer"
     assert body["username"] == user.username
     # o sub do token é o id da conta, não o nome
-    assert decode_access_token(body["access_token"]) == str(user.id)
+    assert decode_access_token(body["access_token"]).subject == str(user.id)
 
 
 def test_login_ignora_maiusculas_no_usuario(anon_client: TestClient, user: User):
@@ -128,12 +130,12 @@ def test_health_continua_publico(anon_client: TestClient):
 
 
 def test_token_expirado_e_recusado(monkeypatch):
-    """TTL negativo simula a sessão vencida sem esperar 12h."""
+    """Janela negativa simula a sessão vencida sem esperar o relógio."""
     from app.config import get_settings
     from app.core.security import create_access_token
 
     settings = get_settings()
-    monkeypatch.setattr(settings, "auth_token_ttl_minutes", -1)
+    monkeypatch.setattr(settings, "auth_idle_timeout_minutes", -1)
     token, _ = create_access_token("1")
 
     with pytest.raises(AuthError, match="expirada"):
@@ -162,3 +164,70 @@ def test_usuario_inexistente_custa_o_mesmo_que_senha_errada(db_session):
         users_service.verify_password = original
 
     assert len(chamadas) == 1
+
+
+# --- sessão que cai por inatividade -------------------------------------------
+
+
+def test_refresh_estende_a_sessao(client: TestClient):
+    """Enquanto a pessoa usa o painel, ele renova o token e a janela recomeça."""
+    response = client.post("/auth/refresh")
+
+    assert response.status_code == 200
+    body = response.json()
+    novo = decode_access_token(body["access_token"])
+    assert novo.subject == "1"
+    # a nova expiração é a janela de inatividade contada de agora
+    restante = datetime.fromisoformat(body["expires_at"]) - datetime.now(UTC)
+    assert timedelta(minutes=9) < restante <= timedelta(minutes=10)
+
+
+def test_refresh_nao_estica_o_teto_da_sessao(client: TestClient):
+    """Renovar não pode virar sessão eterna: o teto vem do token, não do relógio."""
+    primeiro = decode_access_token(
+        client.post("/auth/refresh").json()["access_token"]
+    )
+    segundo = decode_access_token(
+        client.post("/auth/refresh").json()["access_token"]
+    )
+
+    assert segundo.limite == primeiro.limite
+
+
+def test_refresh_sem_token_e_recusado(anon_client: TestClient):
+    assert anon_client.post("/auth/refresh").status_code == 401
+
+
+def test_sessao_parada_alem_da_janela_nao_renova(client: TestClient, monkeypatch):
+    """Quem parou de mexer não tem o que renovar — o token já morreu no servidor."""
+    from app.config import get_settings
+    from app.core.security import create_access_token
+
+    monkeypatch.setattr(get_settings(), "auth_idle_timeout_minutes", -1)
+    vencido, _ = create_access_token("1")
+
+    response = client.post(
+        "/auth/refresh", headers={"Authorization": f"Bearer {vencido}"}
+    )
+
+    assert response.status_code == 401
+    assert "inatividade" in response.json()["detail"]
+
+
+def test_token_alem_do_teto_e_recusado(monkeypatch):
+    """Passado o teto, nem um `exp` no futuro salva o token."""
+    from app.core.security import create_access_token
+
+    limite = datetime.now(UTC) - timedelta(seconds=1)
+    token, _ = create_access_token("1", limite=limite)
+
+    with pytest.raises(AuthError, match="expirada"):
+        decode_access_token(token)
+
+
+def test_conta_desativada_nao_renova(client: TestClient, db_session, user: User):
+    """Desativar o cliente derruba a renovação na hora, sem esperar o token vencer."""
+    user.is_active = False
+    db_session.commit()
+
+    assert client.post("/auth/refresh").status_code == 401

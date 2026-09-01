@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { AvisoDeSessao, useSessao } from "@/components/Sessao";
 import { ApiError, getMe, logout } from "@/lib/api";
 import type { BankrollRead, MeRead, UserRead } from "@/types/api";
 
@@ -109,6 +110,9 @@ export function AppShell({
   //: "confirmando" enquanto a pergunta está na tela, "saindo" enquanto a volta
   //: para o login acontece
   const [saida, setSaida] = useState<"nao" | "confirmando" | "saindo">("nao");
+  // a sessão cai sozinha depois de um tempo sem uso; o relógio mora aqui porque
+  // esta moldura é o que toda tela de dentro da conta tem em comum
+  const { avisoEmSegundos, continuar } = useSessao();
 
   const secao = slug
     ? SECOES.find((s) => s.caminho === caminhoDaSecao(pathname, slug))?.chave
@@ -353,6 +357,12 @@ export function AppShell({
       )}
 
       {saida === "saindo" && <Saindo />}
+
+      {/* enquanto a pessoa está confirmando a saída, avisar que a sessão vai
+          cair só atrapalharia a leitura de uma pergunta que já é sobre sair */}
+      {avisoEmSegundos !== null && saida === "nao" && (
+        <AvisoDeSessao segundos={avisoEmSegundos} onContinuar={continuar} />
+      )}
     </div>
   );
 }

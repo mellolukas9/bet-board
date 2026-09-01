@@ -8,9 +8,12 @@ import { ApiError, login } from "@/lib/api";
 /**
  * Login do admin.
  *
- * Um usuário só — o dono do grupo —, com as credenciais no `.env` do backend.
  * O token volta do `POST /auth/login` e fica num cookie, que o `proxy.ts` lê
  * para barrar quem não entrou.
+ *
+ * `?expirada=1` é a sessão que caiu por inatividade. Sem essa linha, quem
+ * voltasse do café encontraria a tela de login sem explicação e acharia que o
+ * painel tinha desligado sozinho.
  */
 export function LoginForm() {
   const router = useRouter();
@@ -19,6 +22,8 @@ export function LoginForm() {
   const [senha, setSenha] = useState("");
   const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  const expirou = params.get("expirada") === "1";
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault();
@@ -54,6 +59,12 @@ export function LoginForm() {
             <p className="text-xs text-muted">Painel do administrador</p>
           </div>
         </div>
+
+        {expirou && !erro && (
+          <p className="mb-4 rounded-xl border border-amber/30 bg-amber/10 px-4 py-3 text-sm text-amber">
+            Sua sessão expirou por inatividade. Entre de novo para continuar.
+          </p>
+        )}
 
         <form
           onSubmit={(e) => void entrar(e)}

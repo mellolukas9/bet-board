@@ -31,7 +31,7 @@ def get_current_user(
         raise _unauthorized("Autenticação obrigatória.")
 
     try:
-        subject = decode_access_token(credentials.credentials)
+        subject = decode_access_token(credentials.credentials).subject
     except AuthError as exc:
         raise _unauthorized(str(exc)) from exc
 

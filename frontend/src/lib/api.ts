@@ -186,6 +186,18 @@ export function getMe(): Promise<MeRead> {
   return apiFetch<MeRead>("/auth/me");
 }
 
+/**
+ * Estende a sessão de quem está usando o painel.
+ *
+ * Quem chama é o relógio da moldura, enquanto a pessoa mexe na tela. Parou de
+ * mexer, ninguém renova, e o token expira no servidor — a sessão não depende do
+ * navegador se comportar.
+ */
+export async function refreshSession(): Promise<void> {
+  const sessao = await apiFetch<TokenResponse>("/auth/refresh", { method: "POST" });
+  setToken(sessao.access_token, sessao.expires_at);
+}
+
 export function logout(): void {
   clearToken();
 }

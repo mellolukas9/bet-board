@@ -88,7 +88,13 @@ class Settings(BaseSettings):
     # Chave que assina o JWT. Vazia = uma aleatória por processo, o que derruba
     # as sessões a cada restart — aceitável local, não em produção.
     auth_secret_key: str = ""
+    # Teto absoluto da sessão: nem quem fica o dia inteiro no painel passa
+    # disso sem digitar a senha de novo.
     auth_token_ttl_minutes: int = 60 * 12
+    # Inatividade que derruba a sessão. É o `exp` de cada token: o painel o
+    # renova enquanto a pessoa mexe na tela, e para de renovar quando ela para —
+    # então o token morre sozinho no servidor, sem depender do navegador.
+    auth_idle_timeout_minutes: int = 10
 
     # --- primeiro administrador (só para deploy remoto) ---
     # Preenchidas, a API cria (ou promove) esta conta no start. Existe porque

@@ -124,6 +124,26 @@ ele; só `/health`, `/auth/login` e `/public/bankrolls/{slug}` são públicos.
 Banca de outra conta responde **404**, não 403 — um 403 confirmaria que ela
 existe.
 
+### A sessão cai sozinha
+
+Ela tem dois prazos, e o token carrega os dois:
+
+| Prazo | Padrão | O que é |
+|---|---|---|
+| `AUTH_IDLE_TIMEOUT_MINUTES` | 10 min | inatividade: é o `exp` do token |
+| `AUTH_TOKEN_TTL_MINUTES` | 12 h | teto: por mais ativa que a pessoa esteja |
+
+O token vale poucos minutos e o painel o renova pelo `POST /auth/refresh`
+enquanto a pessoa mexe na tela. Quem larga o painel aberto não renova nada, e o
+token expira **no servidor** — a sessão não depende de o navegador se comportar.
+A renovação carrega o teto adiante em vez de recalculá-lo, senão uma aba aberta
+renovaria para sempre.
+
+Um minuto antes de cair, a tela avisa e oferece "continuar conectado": a revisão
+de uma tip é um formulário meio preenchido, e ninguém deveria descobrir o prazo
+perdendo o que digitou. Caiu, o login explica o motivo em vez de aparecer do
+nada.
+
 ## O painel
 
 Por banca, três telas:

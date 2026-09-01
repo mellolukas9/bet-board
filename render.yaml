@@ -39,6 +39,11 @@ services:
         generateValue: true
       - key: AUTH_TOKEN_TTL_MINUTES
         value: 720
+      # Inatividade que derruba a sessão. O painel renova o token enquanto a
+      # pessoa usa a tela; parou, ele expira no servidor — não é o navegador
+      # que decide.
+      - key: AUTH_IDLE_TIMEOUT_MINUTES
+        value: 10
 
       # Primeiro administrador. Cria (ou promove) esta conta no start, uma vez.
       # Depois disso as contas nascem em /admin, no painel.
