@@ -36,8 +36,18 @@ decimal em `odd`/`stake`.
 - Simples e múltiplas/acumuladas
 - Mercados variados: over/under, handicap asiático, ambas marcam, escanteios
 - Odds em formatos diferentes, se a casa exibir assim
+- **Bilhete montado numa partida só** ("Criar Aposta"): é onde a leitura mais
+  erra — a cotação do topo é a total, as de cada seleção são parciais, e a
+  caixa de aposta em branco não é print ilegível.
 - **Casos ruins de propósito:** print cortado, borrado, foto de tela.
   Para esses, o `.json` esperado leva os campos como `null`.
+
+## Um `.json` sem o print ainda não vale
+
+O teste só olha para um caso quando existem os **dois** arquivos. Um `.json`
+sozinho fica esperando a imagem, sem quebrar a suíte — é o caso do
+`bet365-criar-aposta-atletico-cruzeiro.json`, que espera o print do bilhete
+Atlético-MG x Cruzeiro.
 
 ## Privacidade
 

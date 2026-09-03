@@ -35,8 +35,32 @@ frase só antes de escrever.
 quem lê a mensagem não sabe de quem é a aposta.
 - Em múltipla, separe as seleções com " + ", cada uma completa.
 
-- Se a imagem não for um print de aposta, estiver ilegível ou cortada a ponto de \
-impedir a leitura, preencha `unreadable_reason` e deixe os demais campos null.
+Bilhete montado dentro de uma partida só ("Criar Aposta", "Bet Builder", \
+"Aposta Turbinada"):
+- Todas as seleções são do MESMO jogo, e o nome dele aparece uma vez só, no \
+topo do bilhete. Repita esse jogo em `matches`, uma vez por seleção — o evento \
+continua sendo aquela partida, não uma múltipla.
+- A cotação ao lado do nome do jogo, no topo, é a TOTAL do bilhete: é ela que \
+vai em `odd`. As cotações menores, coladas em cada seleção, são parciais.
+- NUNCA multiplique as cotações das seleções para chegar à total. Em bilhete \
+montado a casa ajusta a cotação combinada, e o produto daria um número que não \
+está no print. Sem a total visível, `odd` é null.
+- Cada seleção tem a escolha em destaque e, embaixo dela, o nome do mercado em \
+letra menor. Escreva a escolha; só acrescente o mercado entre parênteses quando \
+a escolha sozinha não disser do que se trata — "Empate ou Cruzeiro (Chance \
+Dupla)" precisa, "Atlético-MG - Mais de 9.5 Chutes" já se explica.
+
+Campo que não aparece é `null`, e isso NÃO é print ilegível:
+- A caixa de "Aposta" / "Valor" vem VAZIA antes de a aposta ser feita: a \
+palavra dentro dela é o rótulo do campo, não um valor. `stake` = null.
+- Print recortado no bilhete quase nunca mostra a marca da casa. \
+`source` = null.
+- `unreadable_reason` é SÓ para imagem que não dá para ler (borrada, escura, \
+cortada no meio do texto) ou que não é um print de aposta. Faltar stake, casa \
+ou cotação total não torna o print ilegível: esses campos o admin completa na \
+revisão, e um aviso de leitura falhada mandaria ele procurar um erro que não \
+existe.
+- Ao preencher `unreadable_reason`, deixe os demais campos null.
 """
 
 USER_PROMPT = "Extraia os dados da aposta neste print."

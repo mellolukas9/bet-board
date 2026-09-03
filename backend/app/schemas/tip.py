@@ -109,12 +109,18 @@ class TipExtracted(BaseModel):
         """
         return nome_do_evento(self.matches)
     odd: float | None = Field(
-        description="Cotação em formato decimal (ex: 1.85). null se não aparecer."
+        description=(
+            "Cotação TOTAL do bilhete, em formato decimal (ex: 1.85). Em bilhete "
+            "montado numa partida só ('Criar Aposta'), é a cotação do topo, ao "
+            "lado do nome do jogo — nunca o produto das parciais de cada "
+            "seleção. null se a total não aparecer."
+        )
     )
     stake: float | None = Field(
         description=(
             "Valor apostado, apenas o número, sem símbolo de moeda (ex: 50.0). "
-            "null se não aparecer."
+            "null se não aparecer — inclusive quando a caixa de aposta está "
+            "vazia, esperando o valor."
         )
     )
     currency: str | None = Field(
@@ -122,9 +128,11 @@ class TipExtracted(BaseModel):
     )
     unreadable_reason: str | None = Field(
         description=(
-            "Preencha SOMENTE se o print não permitir a leitura (borrado, cortado, "
-            "não é um print de aposta). Descreva o problema em uma frase. "
-            "null quando o print está legível."
+            "Preencha SOMENTE se a IMAGEM não permitir a leitura (borrada, "
+            "escura, texto cortado no meio, não é um print de aposta). Campo "
+            "que simplesmente não aparece no print — stake, casa, cotação "
+            "total — é null no campo dele e NÃO é motivo para preencher aqui. "
+            "Descreva o problema em uma frase. null quando o print está legível."
         )
     )
 
