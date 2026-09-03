@@ -174,6 +174,19 @@ def test_encerramento_com_prejuizo(client: TestClient, db_session, bankroll) -> 
     assert Decimal(body["cashout_units"]) == Decimal("0.8")
 
 
+def test_encerramento_aceita_virgula_decimal(client: TestClient, db_session, bankroll) -> None:
+    """O valor é digitado no teclado brasileiro, na mesma tela da odd."""
+    tip = make_tip(db_session, bankroll)
+
+    body = client.post(
+        f"/tips/{tip.id}/result",
+        json={"status": "cashout", "cashout_amount": "180,00"},
+    ).json()
+
+    assert Decimal(body["cashout_amount"]) == Decimal("180")
+    assert Decimal(body["cashout_units"]) == Decimal("2.4")
+
+
 def test_encerramento_exige_o_valor_devolvido(client: TestClient, db_session, bankroll) -> None:
     tip = make_tip(db_session, bankroll)
 

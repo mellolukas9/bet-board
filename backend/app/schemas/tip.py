@@ -23,6 +23,32 @@ _PREFIXO_DE_BILHETE = re.compile(
 )
 
 
+def numero_brasileiro(valor: object) -> object:
+    """Aceita "1,85" e "1.500,00" onde o banco guarda 1.85 e 1500.00.
+
+    O painel é operado do celular, com teclado brasileiro: quem informa uma odd
+    digita a vírgula, e antes disso a API respondia 422 num campo que estava
+    visivelmente certo na tela.
+
+    A regra segue o costume daqui, sem adivinhação:
+
+    * vírgula e ponto juntos ("1.500,00") — o ponto é separador de milhar e cai;
+      a vírgula é o decimal e vira ponto;
+    * só vírgula ("1,85") — ela é o decimal;
+    * só ponto ("1.85") — já é o formato que o banco guarda, fica como está.
+
+    O que não for texto (um número no corpo JSON) passa direto: a conversão é do
+    que foi digitado, não do que já veio tipado.
+    """
+    if not isinstance(valor, str):
+        return valor
+
+    texto = valor.strip()
+    if "," in texto:
+        return texto.replace(".", "").replace(",", ".")
+    return texto
+
+
 def nome_do_evento(matches: list[str] | None) -> str | None:
     """O nome do evento a partir das partidas do bilhete.
 
@@ -215,6 +241,12 @@ class TipUpdate(BaseModel):
     status: TipStatus | None = None
     needs_review: bool | None = None
 
+    # `mode="before"` porque a conversão precisa acontecer antes de o Pydantic
+    # tentar virar Decimal — depois dele já é tarde, o 422 aconteceu.
+    _virgula = field_validator("odd", "stake", "stake_units", mode="before")(
+        numero_brasileiro
+    )
+
     @field_validator("link")
     @classmethod
     def _link_utilizavel(cls, valor: str | None) -> str | None:
@@ -258,6 +290,10 @@ class TipResult(BaseModel):
             "em reais. Acima do stake vira lucro; abaixo, prejuízo."
         ),
     )
+
+    # o valor do encerramento é digitado em reais, na mesma tela e no mesmo
+    # teclado que a odd e as unidades — aceita vírgula pelo mesmo motivo
+    _virgula = field_validator("cashout_amount", mode="before")(numero_brasileiro)
     note: str | None = Field(
         default=None,
         max_length=500,

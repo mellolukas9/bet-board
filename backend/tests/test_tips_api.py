@@ -337,6 +337,41 @@ def test_reading_warning_survives_while_a_field_is_still_missing(
     assert body["extraction_error"] == "print cortado"
 
 
+def test_patch_accepts_the_brazilian_decimal_comma(
+    client,
+    bankroll,
+    use_extractor,
+) -> None:
+    """A revisão é digitada no celular, em teclado brasileiro.
+
+    O que chega com vírgula é gravado com ponto: o banco continua guardando
+    número, não texto formatado.
+    """
+    use_extractor(INCOMPLETE)
+    tip_id = create_tip(client, bankroll).json()["id"]
+
+    body = client.patch(
+        f"/tips/{tip_id}",
+        json={"odd": "1,75", "stake_units": "1,5", "stake": "1.500,00"},
+    ).json()
+
+    assert money(body["odd"]) == Decimal("1.75")
+    assert money(body["stake_units"]) == Decimal("1.5")
+    # o ponto de "1.500,00" é separador de milhar, não decimal
+    assert money(body["stake"]) == Decimal("1500")
+
+
+def test_patch_still_accepts_the_dot(client, bankroll, use_extractor) -> None:
+    """O formato que a API sempre aceitou não pode ter virado erro."""
+    use_extractor(INCOMPLETE)
+    tip_id = create_tip(client, bankroll).json()["id"]
+
+    body = client.patch(f"/tips/{tip_id}", json={"odd": "1.75", "stake": 150.0}).json()
+
+    assert money(body["odd"]) == Decimal("1.75")
+    assert money(body["stake"]) == Decimal("150")
+
+
 def test_patch_rejects_negative_units(client, bankroll, use_extractor) -> None:
     use_extractor(COMPLETE)
     tip_id = create_tip(client, bankroll).json()["id"]

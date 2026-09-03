@@ -8,13 +8,15 @@ import type { Channel, MessageStatus, TipRead, TipUpdate } from "@/types/api";
 /** Campos que o backend exige para publicar (REQUIRED_TO_PUBLISH). */
 const OBRIGATORIOS = ["event", "market", "odd", "stake", "stake_units"] as const;
 
+// O exemplo de cada campo é escrito como se digita aqui: a vírgula decimal
+// é o que o teclado do celular oferece, e o backend a converte ao gravar.
 const EDITAVEIS = [
   ["event", "Evento", "Flamengo x Palmeiras"],
   ["market", "Mercado", "Over 2.5 gols"],
-  ["odd", "Odd", "1.85"],
+  ["odd", "Odd", "1,85"],
   ["stake_units", "Unidades", "2"],
   ["source", "Casa", "Bet365"],
-  ["stake", "Stake (valor da aposta em R$)", "150.00"],
+  ["stake", "Stake (valor da aposta em R$)", "150,00"],
   ["link", "Link da aposta", "https://bet365.com/..."],
 ] as const;
 
