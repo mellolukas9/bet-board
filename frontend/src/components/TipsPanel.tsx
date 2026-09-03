@@ -68,21 +68,77 @@ export function TipsPanel({ bankroll }: { bankroll: BankrollRead }) {
     }
   }
 
-  async function subirPrint(file: File | undefined) {
-    if (!file) return;
+  const subirPrint = useCallback(
+    async (file: File | null | undefined) => {
+      if (!file) return;
 
-    setEnviando(true);
+      setEnviando(true);
+      setErro(null);
+      try {
+        const tip = await createTip(bankroll.id, file);
+        // entra no topo: a listagem é mais recentes primeiro
+        setTips((atuais) => [tip, ...atuais]);
+      } catch (e) {
+        setErro(mensagemDe(e, "Falha ao enviar o print"));
+      } finally {
+        setEnviando(false);
+        // permite reenviar o mesmo arquivo (o input não dispara change com valor igual)
+        if (inputRef.current) inputRef.current.value = "";
+      }
+    },
+    [bankroll.id],
+  );
+
+  /**
+   * Ctrl+V manda o print direto.
+   *
+   * O print raramente é um arquivo: ele nasce de um recorte de tela (Win+Shift+S)
+   * ou vem de uma conversa, e cai na área de transferência. Obrigar a salvar o
+   * arquivo antes, para depois procurá-lo no seletor, é um passo inteiro a mais
+   * no caminho mais usado da tela.
+   *
+   * O ouvinte é do documento porque não há onde focar antes de colar — a área
+   * de upload é uma `div`. Colar texto num campo continua funcionando: só uma
+   * imagem na área de transferência é interceptada.
+   */
+  useEffect(() => {
+    function aoColar(evento: ClipboardEvent) {
+      const imagem = imagemDe(evento.clipboardData);
+      if (!imagem) return;
+      evento.preventDefault();
+      void subirPrint(imagem);
+    }
+
+    document.addEventListener("paste", aoColar);
+    return () => document.removeEventListener("paste", aoColar);
+  }, [subirPrint]);
+
+  /**
+   * "Colar" para quem está no celular, onde não existe Ctrl+V.
+   *
+   * A leitura da área de transferência exige gesto do usuário e permissão — daí
+   * o botão. No iPhone o navegador ainda pergunta "Colar?" antes de entregar a
+   * imagem; recusar ali não é erro, é a pessoa desistindo.
+   */
+  async function colarDaAreaDeTransferencia() {
     setErro(null);
     try {
-      const tip = await createTip(bankroll.id, file);
-      // entra no topo: a listagem é mais recentes primeiro
-      setTips((atuais) => [tip, ...atuais]);
-    } catch (e) {
-      setErro(mensagemDe(e, "Falha ao enviar o print"));
-    } finally {
-      setEnviando(false);
-      // permite reenviar o mesmo arquivo (o input não dispara change com valor igual)
-      if (inputRef.current) inputRef.current.value = "";
+      for (const item of await navigator.clipboard.read()) {
+        const tipo = item.types.find((t) => t.startsWith("image/"));
+        if (!tipo) continue;
+        const blob = await item.getType(tipo);
+        // o nome vira o `raw_image_ref` da tip; sem extensão ele fica estranho
+        // na listagem, ainda que a detecção do formato seja pelos bytes
+        const arquivo = new File([blob], `print.${tipo.split("/")[1]}`, { type: tipo });
+        await subirPrint(arquivo);
+        return;
+      }
+      setErro("Não há imagem na área de transferência. Copie o print e tente de novo.");
+    } catch {
+      setErro(
+        "Não consegui ler a área de transferência. Use o botão de escolher a " +
+          "imagem, ou autorize a colagem quando o navegador perguntar.",
+      );
     }
   }
 
@@ -136,20 +192,43 @@ export function TipsPanel({ bankroll }: { bankroll: BankrollRead }) {
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          void subirPrint(e.dataTransfer.files[0]);
+          void subirPrint(imagemDe(e.dataTransfer));
         }}
         onClick={() => inputRef.current?.click()}
-        className="mt-5 cursor-pointer rounded-xl border border-dashed border-line px-6 py-10 text-center text-sm text-muted transition hover:border-accent/50 hover:bg-white/[.03] hover:text-white"
+        className="mt-5 cursor-pointer rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted transition hover:border-accent/50 hover:bg-white/[.03] hover:text-white sm:px-6 sm:py-10"
       >
         <input
           ref={inputRef}
           type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp"
+          // `image/*` em vez da lista fechada: no celular é ele que abre a
+          // galeria inteira; formato que a visão não aceita o backend recusa
+          // pelos magic bytes, com a mensagem certa
+          accept="image/*"
           className="hidden"
           onChange={(e) => void subirPrint(e.target.files?.[0])}
         />
-        {enviando ? "Lendo o print…" : "Clique ou arraste o print aqui"}
+        {enviando ? (
+          "Lendo o print…"
+        ) : (
+          <>
+            <span className="block">Toque para escolher o print</span>
+            <span className="mt-1 block text-xs">
+              ou arraste o arquivo, ou cole com Ctrl+V
+            </span>
+          </>
+        )}
       </div>
+
+      {/* No celular não há Ctrl+V, e o print quase sempre acabou de ser copiado
+          da casa de apostas — o botão é o caminho curto para ele. */}
+      <button
+        type="button"
+        onClick={() => void colarDaAreaDeTransferencia()}
+        disabled={enviando}
+        className="mt-2 w-full rounded-lg border border-line px-3 py-2.5 text-sm text-muted transition hover:bg-white/5 hover:text-white disabled:opacity-40 sm:hidden"
+      >
+        Colar print copiado
+      </button>
 
       {erro && (
         <p className="mt-5 rounded-lg border border-red/30 bg-red/10 p-4 text-sm text-red">
@@ -239,4 +318,16 @@ function LendoPrint() {
 
 function mensagemDe(e: unknown, padrao: string): string {
   return e instanceof ApiError || e instanceof Error ? e.message : padrao;
+}
+
+/** A primeira imagem de um arrasto ou de uma colagem, se houver alguma. */
+function imagemDe(dados: DataTransfer | null): File | null {
+  if (!dados) return null;
+
+  for (const item of dados.items) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const arquivo = item.getAsFile();
+    if (arquivo) return arquivo;
+  }
+  return null;
 }
