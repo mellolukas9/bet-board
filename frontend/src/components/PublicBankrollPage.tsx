@@ -40,7 +40,7 @@ export function PublicBankrollPage({
   const lucro = Number(banca.stats.profit_units);
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-5 py-8">
+    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5 sm:py-8">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
@@ -76,7 +76,9 @@ export function PublicBankrollPage({
           resultado={resultado}
         />
 
-        <BankrollChart series={comoSerie(banca.stats.series)} altura="h-80 sm:h-96" />
+        {/* 320px de gráfico ocupa metade da tela de um celular antes de o
+            primeiro número aparecer; no desktop a altura maior continua. */}
+        <BankrollChart series={comoSerie(banca.stats.series)} altura="h-64 sm:h-96" />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Cartao
@@ -221,7 +223,7 @@ function Linha({ tip }: { tip: PublicTip }) {
           </span>
           <span
             title={tip.market ?? undefined}
-            className="max-w-[28rem] truncate rounded bg-accent/15 px-2 py-0.5 text-xs text-accent"
+            className="max-w-full truncate rounded bg-accent/15 px-2 py-0.5 text-xs text-accent sm:max-w-[28rem]"
           >
             {tip.market ?? "—"}
           </span>
@@ -231,6 +233,38 @@ function Linha({ tip }: { tip: PublicTip }) {
           {tip.source && (
             <span className="ml-2 text-sm font-normal text-muted">
               {tip.source}
+            </span>
+          )}
+        </p>
+
+        {/* Esta página é um link mandado no grupo: ela é aberta no celular. As
+            colunas da direita não cabem lá, e sem elas o assinante via a aposta
+            sem a cotação — que é metade do que ele veio conferir. */}
+        <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted tabular-nums sm:hidden">
+          <span>
+            cotação{" "}
+            <b className="font-semibold text-white">{formatOdd(tip.odd)}</b>
+          </span>
+          <span>
+            valor{" "}
+            <b className="font-semibold text-white">
+              {tip.stake_units ? formatUnits(tip.stake_units) : "—"}
+            </b>
+          </span>
+          {tip.status !== "pending" && (
+            <span>
+              lucro{" "}
+              <b
+                className={`font-semibold ${
+                  resultado > 0
+                    ? "text-green"
+                    : resultado < 0
+                      ? "text-red"
+                      : "text-white"
+                }`}
+              >
+                {formatUnitsSigned(resultado)}
+              </b>
             </span>
           )}
         </p>

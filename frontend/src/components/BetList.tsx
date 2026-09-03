@@ -187,7 +187,7 @@ function BetRow({
               truncate ele quebra em duas linhas e desalinha a lista */}
           <span
             title={tip.market ?? undefined}
-            className="max-w-[24rem] truncate rounded bg-accent/15 px-1.5 py-0.5 text-[11px] text-accent"
+            className="max-w-full truncate rounded bg-accent/15 px-1.5 py-0.5 text-[11px] text-accent sm:max-w-[24rem]"
           >
             {tip.market ?? "Sem mercado"}
           </span>
@@ -203,6 +203,39 @@ function BetRow({
           {tip.source && (
             <span className="ml-2 text-xs font-normal text-muted">
               {tip.source}
+            </span>
+          )}
+        </p>
+
+        {/* No celular as colunas da direita não cabem, e sem elas a lista virava
+            só evento e mercado — a aposta sem número nenhum. Aqui eles voltam
+            em uma linha, rotulados para não virar adivinhação. O ganho fica de
+            fora: em quatro dedos de tela, cotação, valor e lucro são o que se
+            confere de relance. */}
+        <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted tabular-nums sm:hidden">
+          <span>
+            cotação <b className="font-semibold text-white">{formatOdd(tip.odd)}</b>
+          </span>
+          <span>
+            valor{" "}
+            <b className="font-semibold text-white">
+              {semUnidades ? "—" : formatUnits(tip.stake_units)}
+            </b>
+          </span>
+          {tip.status !== "pending" && (
+            <span>
+              lucro{" "}
+              <b
+                className={`font-semibold ${
+                  resultado > 0
+                    ? "text-green"
+                    : resultado < 0
+                      ? "text-red"
+                      : "text-white"
+                }`}
+              >
+                {formatUnitsSigned(resultado)}
+              </b>
             </span>
           )}
         </p>
@@ -304,7 +337,7 @@ function FaixaDeResultado({
 }) {
   if (tip.status === "pending") {
     return (
-      <div className="grid w-16 shrink-0 grid-cols-2 grid-rows-2 border-l border-line">
+      <div className="grid w-20 shrink-0 grid-cols-2 grid-rows-2 border-l border-line sm:w-16">
         <BotaoDeResultado
           rotulo="Ganha"
           simbolo="✓"
@@ -349,7 +382,7 @@ function FaixaDeResultado({
 
   if (desfazendo) {
     return (
-      <div className="flex w-16 shrink-0 flex-col border-l border-line">
+      <div className="flex w-20 shrink-0 flex-col border-l border-line sm:w-16">
         <BotaoDeResultado
           rotulo="Desfazer: volta para pendente"
           simbolo="↺"
@@ -373,7 +406,7 @@ function FaixaDeResultado({
       type="button"
       onClick={onDesfazer}
       title={`${ROTULO_STATUS[tip.status]} — clique para desfazer`}
-      className={`w-16 shrink-0 border-l border-line text-[11px] font-medium transition hover:brightness-125 ${cor}`}
+      className={`w-20 shrink-0 border-l border-line text-[11px] font-medium transition hover:brightness-125 sm:w-16 ${cor}`}
     >
       <span
         className="inline-block py-2"

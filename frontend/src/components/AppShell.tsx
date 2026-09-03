@@ -110,6 +110,8 @@ export function AppShell({
   //: "confirmando" enquanto a pergunta está na tela, "saindo" enquanto a volta
   //: para o login acontece
   const [saida, setSaida] = useState<"nao" | "confirmando" | "saindo">("nao");
+  //: a lateral como gaveta, no celular — no desktop ela está sempre na tela
+  const [menuAberto, setMenuAberto] = useState(false);
   // a sessão cai sozinha depois de um tempo sem uso; o relógio mora aqui porque
   // esta moldura é o que toda tela de dentro da conta tem em comum
   const { avisoEmSegundos, continuar } = useSessao();
@@ -151,6 +153,24 @@ export function AppShell({
   }, []);
 
   /**
+   * Esc fecha a gaveta.
+   *
+   * É o mesmo gesto que fecha a confirmação de saída — e vale para a janela
+   * estreita no desktop, onde a gaveta também aparece e existe um Esc para
+   * apertar.
+   */
+  useEffect(() => {
+    if (!menuAberto) return;
+
+    function aoTeclar(evento: KeyboardEvent) {
+      if (evento.key === "Escape") setMenuAberto(false);
+    }
+
+    document.addEventListener("keydown", aoTeclar);
+    return () => document.removeEventListener("keydown", aoTeclar);
+  }, [menuAberto]);
+
+  /**
    * Sair de verdade, depois de a pessoa confirmar.
    *
    * O estado vira "saindo" **antes** do `replace` porque a volta ao login passa
@@ -189,119 +209,58 @@ export function AppShell({
     [pathname, router, slug],
   );
 
+  const lateral = (
+    <Lateral
+      user={user}
+      bankrolls={bankrolls}
+      slug={slug}
+      secao={secao}
+      carregando={carregando}
+      onSair={() => setSaida("confirmando")}
+    />
+  );
+
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-surface md:flex">
-        <Link
-          href="/"
-          className="flex h-16 items-center gap-2.5 border-b border-line px-5"
-        >
-          <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-green to-accent text-sm font-bold text-[#07101f]">
-            B
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight">
-            Bet Board
-          </span>
-        </Link>
-
-        <nav className="flex-1 overflow-y-auto p-3">
-          <p className="px-2 pb-2 pt-1 text-[10px] font-semibold tracking-widest text-muted">
-            BANCAS
-          </p>
-
-          {bankrolls.map((b) => (
-            <div key={b.id} className="mb-1">
-              <Link
-                href={`/banca/${b.slug}`}
-                aria-current={b.slug === slug ? "page" : undefined}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                  b.slug === slug
-                    ? "bg-accent/15 font-medium text-white ring-1 ring-inset ring-accent/30"
-                    : "text-muted hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <span className="truncate">{b.name}</span>
-                {b.is_public && (
-                  <span
-                    title="Página pública ligada"
-                    className="ml-auto shrink-0 text-[10px] text-green"
-                  >
-                    ●
-                  </span>
-                )}
-              </Link>
-
-              {/* as seções só aparecem sob a banca aberta: um menu por banca
-                  deixaria a lateral ilegível para quem tem várias */}
-              {b.slug === slug && (
-                <div className="ml-3 mt-1 border-l border-line pl-2">
-                  {SECOES.map(({ chave, rotulo, caminho, icone: Icone }) => (
-                    <Link
-                      key={chave}
-                      href={`/banca/${b.slug}${caminho}`}
-                      aria-current={chave === secao ? "page" : undefined}
-                      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition ${
-                        chave === secao
-                          ? "text-white"
-                          : "text-muted hover:text-white"
-                      }`}
-                    >
-                      <Icone />
-                      {rotulo}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {!carregando && bankrolls.length === 0 && (
-            <p className="px-3 py-2 text-xs text-muted">
-              Nenhuma banca ainda.
-            </p>
-          )}
-
-          <Link
-            href="/bancas"
-            className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-sm text-muted transition hover:border-accent/50 hover:text-white"
-          >
-            + Nova banca
-          </Link>
-        </nav>
-
-        <div className="border-t border-line p-3">
-          {/* o atalho só existe para quem administra o sistema; para os demais a
-              rota /admin responde "não encontrada" */}
-          {user?.is_superuser && (
-            <Link
-              href="/admin"
-              className="mb-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-amber transition hover:bg-amber/10"
-            >
-              <IconeAdmin />
-              Administração
-            </Link>
-          )}
-
-          {user && (
-            <p className="truncate px-3 pb-1 text-xs text-muted">
-              {user.name || user.username}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => setSaida("confirmando")}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-white/5 hover:text-white"
-          >
-            <IconeSair />
-            Sair
-          </button>
-        </div>
+        {lateral}
       </aside>
 
+      {/* No celular a mesma lateral vira gaveta. Ela some abaixo de `md`, e sem
+          a gaveta o painel ficava sem trocar de seção nem de banca: quem abrisse
+          Tips no telefone não tinha como voltar para a Banca. */}
+      {menuAberto && (
+        <div
+          onClick={() => setMenuAberto(false)}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+        >
+          {/* O clique de dentro sobe até o fundo e fecha a gaveta junto: tudo
+              o que há aqui é link ou o botão de sair, e os dois trocam a tela
+              que a gaveta está cobrindo. */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
+            className="flex h-full w-64 max-w-[85%] flex-col border-r border-line bg-surface"
+          >
+            {lateral}
+          </div>
+        </div>
+      )}
+
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b border-line bg-surface/95 px-5 backdrop-blur">
+        <header className="sticky top-0 z-10 flex h-16 items-center gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur sm:px-5">
+          <button
+            type="button"
+            onClick={() => setMenuAberto(true)}
+            aria-label="Abrir o menu"
+            className="-ml-1 shrink-0 rounded-lg p-2 text-muted transition hover:bg-white/5 hover:text-white md:hidden"
+          >
+            <IconeMenu />
+          </button>
+
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold tracking-tight">
+            <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">
               {titulo ?? atual?.name ?? "Bet Board"}
             </h1>
             {atual && (
@@ -312,16 +271,9 @@ export function AppShell({
             )}
           </div>
           {acoes}
-          <button
-            type="button"
-            onClick={() => setSaida("confirmando")}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted transition hover:bg-white/5 hover:text-white md:hidden"
-          >
-            Sair
-          </button>
         </header>
 
-        <main className="flex-1 p-5">
+        <main className="flex-1 p-4 sm:p-5">
           {erro && (
             <p
               role="alert"
@@ -364,6 +316,137 @@ export function AppShell({
         <AvisoDeSessao segundos={avisoEmSegundos} onContinuar={continuar} />
       )}
     </div>
+  );
+}
+
+/**
+ * O conteúdo da lateral: bancas, seções da banca aberta e a conta.
+ *
+ * Sai do `AppShell` porque é desenhado duas vezes — fixo à esquerda no desktop,
+ * dentro da gaveta no celular. Só um dos dois está na tela por vez (o CSS
+ * decide), então não há estado a compartilhar entre eles.
+ */
+function Lateral({
+  user,
+  bankrolls,
+  slug,
+  secao,
+  carregando,
+  onSair,
+}: {
+  user: UserRead | null;
+  bankrolls: BankrollRead[];
+  slug?: string;
+  secao?: string;
+  carregando: boolean;
+  onSair: () => void;
+}) {
+  return (
+    <>
+      <Link
+        href="/"
+        className="flex h-16 shrink-0 items-center gap-2.5 border-b border-line px-5"
+      >
+        <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-green to-accent text-sm font-bold text-[#07101f]">
+          B
+        </span>
+        <span className="text-[15px] font-semibold tracking-tight">
+          Bet Board
+        </span>
+      </Link>
+
+      <nav className="flex-1 overflow-y-auto p-3">
+        <p className="px-2 pb-2 pt-1 text-[10px] font-semibold tracking-widest text-muted">
+          BANCAS
+        </p>
+
+        {bankrolls.map((b) => (
+          <div key={b.id} className="mb-1">
+            <Link
+              href={`/banca/${b.slug}`}
+              aria-current={b.slug === slug ? "page" : undefined}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                b.slug === slug
+                  ? "bg-accent/15 font-medium text-white ring-1 ring-inset ring-accent/30"
+                  : "text-muted hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <span className="truncate">{b.name}</span>
+              {b.is_public && (
+                <span
+                  title="Página pública ligada"
+                  className="ml-auto shrink-0 text-[10px] text-green"
+                >
+                  ●
+                </span>
+              )}
+            </Link>
+
+            {/* as seções só aparecem sob a banca aberta: um menu por banca
+                deixaria a lateral ilegível para quem tem várias */}
+            {b.slug === slug && (
+              <div className="ml-3 mt-1 border-l border-line pl-2">
+                {SECOES.map(({ chave, rotulo, caminho, icone: Icone }) => (
+                  <Link
+                    key={chave}
+                    href={`/banca/${b.slug}${caminho}`}
+                    aria-current={chave === secao ? "page" : undefined}
+                    // py-2 em vez de py-1.5: no celular estes três links são a
+                    // navegação inteira, e o alvo do dedo não pode ser o de um
+                    // cursor
+                    className={`flex items-center gap-2 rounded-md px-2.5 py-2 text-[13px] transition ${
+                      chave === secao ? "text-white" : "text-muted hover:text-white"
+                    }`}
+                  >
+                    <Icone />
+                    {rotulo}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {!carregando && bankrolls.length === 0 && (
+          <p className="px-3 py-2 text-xs text-muted">Nenhuma banca ainda.</p>
+        )}
+
+        <Link
+          href="/bancas"
+          className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-2 text-sm text-muted transition hover:border-accent/50 hover:text-white"
+        >
+          + Nova banca
+        </Link>
+      </nav>
+
+      <div className="shrink-0 border-t border-line p-3">
+        {/* o atalho só existe para quem administra o sistema; para os demais a
+            rota /admin responde "não encontrada" */}
+        {user?.is_superuser && (
+          <Link
+            href="/admin"
+            className="mb-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-amber transition hover:bg-amber/10"
+          >
+            <IconeAdmin />
+            Administração
+          </Link>
+        )}
+
+        {user && (
+          <p className="truncate px-3 pb-1 text-xs text-muted">
+            {user.name || user.username}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onSair}
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-white/5 hover:text-white"
+        >
+          <IconeSair />
+          Sair
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -480,6 +563,19 @@ function BancaNaoEncontrada({ slug }: { slug?: string }) {
         Ver minhas bancas
       </Link>
     </div>
+  );
+}
+
+function IconeMenu() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
+      <path
+        d="M3.5 6h13M3.5 10h13M3.5 14h13"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

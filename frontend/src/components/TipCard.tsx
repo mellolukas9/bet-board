@@ -21,6 +21,20 @@ const EDITAVEIS = [
 type Campo = (typeof EDITAVEIS)[number][0];
 
 /**
+ * O teclado que o celular abre em cada campo.
+ *
+ * A revisão é feita do telefone — é lá que o link da aposta na Bet365 existe —
+ * e digitar "1,85" num teclado de letras é procurar o símbolo em duas telas.
+ * `decimal` traz a vírgula junto dos números.
+ */
+const TECLADO: Partial<Record<Campo, "decimal" | "url">> = {
+  odd: "decimal",
+  stake_units: "decimal",
+  stake: "decimal",
+  link: "url",
+};
+
+/**
  * Rótulo de tela para cada campo — o aviso não pode falar "stake_units".
  *
  * O do `stake` é escrito à mão: o rótulo do formulário cabe em cima de um campo
@@ -167,7 +181,7 @@ export function TipCard({
     : tip.messages.map((log) => [log.channel, log.status]);
 
   return (
-    <article className="rounded-xl border border-line bg-surface p-5">
+    <article className="rounded-xl border border-line bg-surface p-4 sm:p-5">
       <header className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-medium">
@@ -202,7 +216,7 @@ export function TipCard({
               onClick={() => setConfirmando(true)}
               aria-label={`Descartar a tip ${tip.id}`}
               title="Descartar"
-              className="rounded-md px-2 py-1 text-sm leading-none text-muted transition hover:bg-red/10 hover:text-red"
+              className="rounded-md px-2.5 py-2 text-sm leading-none text-muted transition hover:bg-red/10 hover:text-red"
             >
               ✕
             </button>
@@ -229,7 +243,7 @@ export function TipCard({
               type="button"
               onClick={() => void descartar()}
               disabled={descartando}
-              className="rounded-lg bg-red px-3 py-1.5 text-sm font-semibold text-[#2a0612] transition hover:brightness-110 disabled:opacity-40"
+              className="rounded-lg bg-red px-3 py-2 text-sm font-semibold text-[#2a0612] transition hover:brightness-110 disabled:opacity-40"
             >
               {descartando ? "Descartando…" : "Descartar"}
             </button>
@@ -238,9 +252,9 @@ export function TipCard({
       )}
 
       {/* O backend apaga o aviso assim que a tip fica completa, mas as tips
-          publicadas antes dessa regra carregam o dele preso no registro â€” e um
-          "leitura falhou" em cima de uma tip que jÃ¡ foi para o grupo manda
-          procurar um erro que nÃ£o existe mais. */}
+          publicadas antes dessa regra carregam o dele preso no registro — e um
+          "leitura falhou" em cima de uma tip que já foi para o grupo manda
+          procurar um erro que não existe mais. */}
       {tip.extraction_error && !publicada && (
         <p className="mt-4 rounded-lg border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
           Leitura falhou: {tip.extraction_error}
@@ -296,7 +310,7 @@ export function TipCard({
                   value={valor(campo)}
                   placeholder={exemplo}
                   type={campo === "link" ? "url" : "text"}
-                  inputMode={campo === "link" ? "url" : undefined}
+                  inputMode={TECLADO[campo]}
                   spellCheck={campo === "link" ? false : undefined}
                   disabled={publicada}
                   onChange={(e) =>
@@ -336,7 +350,7 @@ export function TipCard({
               type="button"
               onClick={() => void salvar()}
               disabled={salvando}
-              className="rounded-lg border border-accent/50 bg-accent/15 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent/25 disabled:opacity-40"
+              className="rounded-lg border border-accent/50 bg-accent/15 px-3 py-2 text-sm font-medium text-white transition hover:bg-accent/25 disabled:opacity-40"
             >
               {salvando ? "Salvando…" : `Salvar ${alterados.length} alteração${alterados.length > 1 ? "ões" : ""}`}
             </button>
@@ -348,7 +362,7 @@ export function TipCard({
             type="button"
             onClick={() => void publicar()}
             disabled={!publicavel || publicando || temRascunho}
-            className="rounded-lg bg-green px-3 py-1.5 text-sm font-semibold text-[#062018] transition hover:brightness-110 disabled:opacity-40"
+            className="rounded-lg bg-green px-4 py-2 text-sm font-semibold text-[#062018] transition hover:brightness-110 disabled:opacity-40"
           >
             {publicando ? "Publicando…" : "Publicar"}
           </button>
