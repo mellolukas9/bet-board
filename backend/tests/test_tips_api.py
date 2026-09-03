@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
-from app.models.tip import Channel, MessageStatus, TipStatus
+from app.models.tip import Channel, MessageStatus, Tip, TipStatus
 from app.schemas.tip import TipExtracted
 from app.services.messaging.base import MessageSender, MessageSendError
 from app.services.vision import get_vision_extractor
@@ -295,6 +295,48 @@ def test_admin_can_force_needs_review(client, bankroll, use_extractor) -> None:
     assert body["needs_review"] is True
 
 
+def test_completing_the_tip_clears_the_reading_warning(
+    client,
+    bankroll,
+    use_extractor,
+) -> None:
+    """O aviso descreve o print; preenchido o que faltava, ele deixa de valer.
+
+    Antes ele sobrevivia à revisão e continuava na tela depois da publicação,
+    contradizendo os campos logo abaixo dele.
+    """
+    use_extractor(INCOMPLETE)
+    tip_id = create_tip(client, bankroll).json()["id"]
+
+    body = client.patch(
+        f"/tips/{tip_id}",
+        json={
+            "event": "Atlético-MG x Cruzeiro",
+            "market": "Empate ou Cruzeiro (Chance Dupla)",
+            "odd": "1.75",
+            "stake": "100",
+            "stake_units": "2",
+        },
+    ).json()
+
+    assert body["extraction_error"] is None
+    assert body["needs_review"] is False
+
+
+def test_reading_warning_survives_while_a_field_is_still_missing(
+    client,
+    bankroll,
+    use_extractor,
+) -> None:
+    """Enquanto falta campo o aviso ainda explica *por que* falta."""
+    use_extractor(INCOMPLETE)
+    tip_id = create_tip(client, bankroll).json()["id"]
+
+    body = client.patch(f"/tips/{tip_id}", json={"stake_units": "2"}).json()
+
+    assert body["extraction_error"] == "print cortado"
+
+
 def test_patch_rejects_negative_units(client, bankroll, use_extractor) -> None:
     use_extractor(COMPLETE)
     tip_id = create_tip(client, bankroll).json()["id"]
@@ -320,6 +362,32 @@ def test_publishes_with_the_stake_in_units(client, bankroll, use_extractor, use_
     assert "Stake: 2u" in body["message"]
     assert "R$" not in body["message"]
     assert telegram.sent == [body["message"]]
+
+
+def test_publishing_clears_a_reading_warning_left_behind(
+    client,
+    bankroll,
+    db_session,
+    use_extractor,
+    use_senders,
+) -> None:
+    """Tip completa publicada não leva aviso de leitura para a tela.
+
+    O caso é o das tips gravadas antes desta regra: elas já foram revisadas e
+    publicadas com o aviso preso no registro. O ``extraction_error`` é escrito
+    direto no banco porque, pelo PATCH, a correção já o apagaria.
+    """
+    use_extractor(COMPLETE)
+    use_senders(FakeSender(Channel.TELEGRAM))
+    tip_id = create_tip(client, bankroll).json()["id"]
+    make_publishable(client, tip_id)
+
+    db_session.get(Tip, tip_id).extraction_error = "print cortado"
+    db_session.commit()
+
+    body = client.post(f"/tips/{tip_id}/publish").json()
+
+    assert body["tip"]["extraction_error"] is None
 
 
 def test_publishing_records_the_message_log(client, bankroll, use_extractor, use_senders) -> None:

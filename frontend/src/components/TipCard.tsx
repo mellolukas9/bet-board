@@ -237,7 +237,11 @@ export function TipCard({
         </div>
       )}
 
-      {tip.extraction_error && (
+      {/* O backend apaga o aviso assim que a tip fica completa, mas as tips
+          publicadas antes dessa regra carregam o dele preso no registro â€” e um
+          "leitura falhou" em cima de uma tip que jÃ¡ foi para o grupo manda
+          procurar um erro que nÃ£o existe mais. */}
+      {tip.extraction_error && !publicada && (
         <p className="mt-4 rounded-lg border border-amber/30 bg-amber/10 p-3 text-sm text-amber">
           Leitura falhou: {tip.extraction_error}
         </p>

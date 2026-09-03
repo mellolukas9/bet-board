@@ -199,6 +199,8 @@ def update_tip(session: Session, tip: Tip, data: TipUpdate) -> Tip:
     if tip.currency:
         tip.currency = tip.currency.upper()[:3]
 
+    _drop_stale_extraction_error(tip)
+
     # Corrigir a tip é justamente o que tira ela da fila; recalcular evita que
     # ela fique marcada para revisão para sempre depois de completada.
     tip.needs_review = (
@@ -328,6 +330,23 @@ def missing_to_publish(tip: Tip) -> list[str]:
     return [f for f in REQUIRED_TO_PUBLISH if getattr(tip, f) is None]
 
 
+def _drop_stale_extraction_error(tip: Tip) -> None:
+    """Apaga o aviso de leitura quando ele não descreve mais a tip.
+
+    ``extraction_error`` é o que a IA disse **do print** ("não achei o valor
+    apostado", "parece cortado"). Uma vez que o admin preencheu o que faltava, o
+    aviso passa a contradizer os campos logo abaixo dele — e, antes disto, ele
+    sobrevivia à revisão e à publicação, deixando na tela uma falha já
+    resolvida.
+
+    O critério é o mesmo do publish: sem campo faltando, o que a IA não
+    conseguiu ler alguém já leu por ela. Enquanto faltar algo, o aviso continua
+    — ali ele ainda explica *por que* falta.
+    """
+    if tip.extraction_error and not missing_to_publish(tip):
+        tip.extraction_error = None
+
+
 def was_published(tip: Tip) -> bool:
     """True se a tip já foi entregue em algum canal."""
     return tip.published_at is not None
@@ -360,6 +379,12 @@ def publish_tip(
             "Nenhum canal de envio configurado. Confira TELEGRAM_BOT_TOKEN e "
             "TELEGRAM_CHAT_ID no .env."
         )
+
+    # A tip passou pelas checagens acima, então está completa: um aviso de
+    # leitura que tenha sobrado de antes da revisão não descreve o que está indo
+    # para o grupo agora. Tips publicadas antes desta regra são limpas aqui na
+    # próxima vez que passarem por aqui.
+    _drop_stale_extraction_error(tip)
 
     text = format_tip_message(
         _as_extracted(tip),
