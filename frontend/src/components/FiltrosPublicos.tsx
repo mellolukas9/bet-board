@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { diaAtras } from "@/lib/bets";
 import type { TipStatus } from "@/types/api";
 
 /** Recortes de período da página pública. `dias: null` = a banca inteira. */
@@ -32,15 +33,16 @@ export function resultadoDe(valor: string | undefined): ResultadoPublico {
   return RESULTADOS.find((r) => r.chave === valor)?.chave ?? "todas";
 }
 
-/** Data inicial do período, no formato que a API espera (AAAA-MM-DD). */
+/**
+ * Data inicial do período, no formato que a API espera (AAAA-MM-DD).
+ *
+ * O "hoje" é o de São Paulo, não o do servidor: esta página é renderizada em
+ * UTC, onde o dia vira três horas antes.
+ */
 export function desde(periodo: PeriodoPublico): string | undefined {
   const dias = PERIODOS.find((p) => p.chave === periodo)?.dias;
   if (dias === null || dias === undefined) return undefined;
-
-  const data = new Date();
-  data.setDate(data.getDate() - dias);
-  const mes = String(data.getMonth() + 1).padStart(2, "0");
-  return `${data.getFullYear()}-${mes}-${String(data.getDate()).padStart(2, "0")}`;
+  return diaAtras(dias);
 }
 
 export function statusDe(resultado: ResultadoPublico): TipStatus | undefined {

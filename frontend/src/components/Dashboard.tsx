@@ -9,7 +9,7 @@ import { BankrollChart } from "@/components/BankrollChart";
 import { BetList, emJogo } from "@/components/BetList";
 import { StatCards } from "@/components/StatCards";
 import { ApiError, getStats, listTips } from "@/lib/api";
-import { formatUnits } from "@/lib/bets";
+import { diaAtras, formatUnits } from "@/lib/bets";
 import type { BankrollStats, TipRead } from "@/types/api";
 
 /** Recortes de período do painel. `dias: null` = a banca inteira. */
@@ -201,11 +201,7 @@ export function Dashboard() {
 function desde(periodo: Periodo): string | null {
   const dias = PERIODOS.find((p) => p.chave === periodo)?.dias;
   if (dias === null || dias === undefined) return null;
-
-  const data = new Date();
-  data.setDate(data.getDate() - dias);
-  const mes = String(data.getMonth() + 1).padStart(2, "0");
-  return `${data.getFullYear()}-${mes}-${String(data.getDate()).padStart(2, "0")}`;
+  return diaAtras(dias);
 }
 
 function mensagemDe(e: unknown): string {

@@ -19,6 +19,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.tz import dia_local, fim_do_dia, inicio_do_dia
 from app.models.tip import Tip, TipStatus
 
 ZERO = Decimal("0")
@@ -127,12 +128,13 @@ def _daily_series(settled: list[Tip]) -> list[dict]:
     """Um ponto por dia com resultado, com o acumulado da banca.
 
     A data é a da resolução (é quando o dinheiro entra ou sai); tip resolvida
-    antes desta coluna existir cai no ``created_at``.
+    antes desta coluna existir cai no ``created_at``. O dia é o de São Paulo:
+    resolver às 22h não pode empurrar o ponto para o dia seguinte.
     """
     by_day: OrderedDict[date, dict] = OrderedDict()
 
     for tip in sorted(settled, key=_settled_at):
-        day = _settled_at(tip).date()
+        day = dia_local(_settled_at(tip))
         point = by_day.setdefault(
             day, {"date": day, "bets": 0, "profit_units": ZERO, "profit_brl": ZERO}
         )
@@ -167,10 +169,12 @@ def _tips_in_range(
     stmt = select(Tip).where(
         Tip.bankroll_id == bankroll_id, Tip.published_at.is_not(None)
     )
+    # As bordas são meia-noite e meia-noite menos um instante **em São Paulo**,
+    # não em UTC: senão o filtro de "hoje" começa às 21h de ontem.
     if since is not None:
-        stmt = stmt.where(Tip.created_at >= datetime.combine(since, datetime.min.time()))
+        stmt = stmt.where(Tip.created_at >= inicio_do_dia(since))
     if until is not None:
-        stmt = stmt.where(Tip.created_at <= datetime.combine(until, datetime.max.time()))
+        stmt = stmt.where(Tip.created_at <= fim_do_dia(until))
     return list(session.scalars(stmt.order_by(Tip.id)))
 
 

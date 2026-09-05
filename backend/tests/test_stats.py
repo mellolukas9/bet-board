@@ -266,3 +266,76 @@ def test_a_lista_da_banca_recorta_por_periodo(client: TestClient, bankroll, db_s
     tips = client.get(f"/bankrolls/{bankroll.id}/tips?published=true&since={desde}").json()
 
     assert len(tips) == 1
+
+
+def test_a_curva_agrupa_pelo_dia_de_sao_paulo(
+    client: TestClient, bankroll, db_session
+) -> None:
+    """Resolver às 22h de São Paulo é 01h em UTC — mas ainda é o mesmo dia aqui.
+
+    Sem converter o fuso, as duas tips cairiam em dias diferentes e o gráfico
+    mostraria dois pontos onde o tipster teve um dia só.
+    """
+    # 2026-08-29, 19h e 22h em São Paulo (UTC-3) = 22h do dia 29 e 01h do dia 30 em UTC
+    add_tip(
+        db_session,
+        bankroll,
+        status=TipStatus.GREEN,
+        odd="2.00",
+        units="1",
+        resolved_at=datetime(2026, 8, 29, 22, 0, tzinfo=UTC),
+    )
+    add_tip(
+        db_session,
+        bankroll,
+        status=TipStatus.GREEN,
+        odd="2.00",
+        units="1",
+        resolved_at=datetime(2026, 8, 30, 1, 0, tzinfo=UTC),
+    )
+
+    series = client.get(f"/bankrolls/{bankroll.id}/stats").json()["series"]
+
+    assert len(series) == 1
+    assert series[0]["date"] == "2026-08-29"
+    assert series[0]["bets"] == 2
+
+
+def test_o_periodo_comeca_a_meia_noite_de_sao_paulo(
+    client: TestClient, bankroll, db_session
+) -> None:
+    """Tip das 22h de ontem não pode entrar no filtro de hoje.
+
+    Em UTC ela é 01h de hoje: o corte tem de ser a meia-noite de São Paulo, e
+    não a de UTC, que chega três horas mais cedo.
+    """
+    tip = add_tip(db_session, bankroll, status=TipStatus.GREEN, odd="2.00", units="1")
+    tip.created_at = datetime(2026, 8, 30, 1, 0, tzinfo=UTC)  # 29/08 22h em São Paulo
+    db_session.commit()
+
+    body = client.get(
+        f"/bankrolls/{bankroll.id}/stats", params={"since": "2026-08-30"}
+    ).json()
+    assert body["bets"] == 0
+
+    body = client.get(
+        f"/bankrolls/{bankroll.id}/stats",
+        params={"since": "2026-08-29", "until": "2026-08-29"},
+    ).json()
+    assert body["bets"] == 1
+
+
+def test_a_lista_usa_a_mesma_borda_de_fuso_do_stats(
+    client: TestClient, bankroll, db_session
+) -> None:
+    tip = add_tip(db_session, bankroll, status=TipStatus.GREEN)
+    tip.created_at = datetime(2026, 8, 30, 1, 0, tzinfo=UTC)  # 29/08 22h em São Paulo
+    db_session.commit()
+
+    fora = client.get(f"/bankrolls/{bankroll.id}/tips?published=true&since=2026-08-30").json()
+    dentro = client.get(
+        f"/bankrolls/{bankroll.id}/tips?published=true&since=2026-08-29&until=2026-08-29"
+    ).json()
+
+    assert fora == []
+    assert len(dentro) == 1

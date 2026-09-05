@@ -13,6 +13,7 @@ import {
   logout,
   patchAdminUser,
 } from "@/lib/api";
+import { FUSO } from "@/lib/bets";
 import type { AdminUserRead, UserRead } from "@/types/api";
 
 /**
@@ -210,7 +211,7 @@ function Conta({
             {conta.bankrolls} {conta.bankrolls === 1 ? "banca" : "bancas"} ·{" "}
             {conta.tips} {conta.tips === 1 ? "tip" : "tips"} ·{" "}
             {conta.last_login_at
-              ? `último acesso ${new Date(conta.last_login_at).toLocaleDateString("pt-BR")}`
+              ? `último acesso ${new Date(conta.last_login_at).toLocaleDateString("pt-BR", { timeZone: FUSO })}`
               : "nunca entrou"}
           </p>
         </div>

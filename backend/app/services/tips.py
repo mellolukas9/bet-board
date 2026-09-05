@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.logging import get_logger
+from app.core.tz import fim_do_dia, inicio_do_dia
 from app.models.tip import MessageLog, MessageStatus, Tip, TipStatus
 from app.models.user import Bankroll
 from app.schemas.tip import TipExtracted, TipUpdate
@@ -143,9 +144,9 @@ def list_tips(
     """Lista as tips **de uma banca**, mais recentes primeiro.
 
     ``published_only`` é o recorte da banca: só entra o que foi para o grupo.
-    ``since``/``until`` recortam por ``created_at``, inclusive nas duas pontas —
-    o mesmo campo e o mesmo critério do ``/stats``, para lista e cartões
-    falarem do mesmo período.
+    ``since``/``until`` recortam por ``created_at``, inclusive nas duas pontas,
+    com o dia começando e terminando **em São Paulo** — o mesmo campo e o mesmo
+    critério do ``/stats``, para lista e cartões falarem do mesmo período.
     """
     stmt = (
         select(Tip)
@@ -160,9 +161,9 @@ def list_tips(
     if needs_review is not None:
         stmt = stmt.where(Tip.needs_review == needs_review)
     if since is not None:
-        stmt = stmt.where(Tip.created_at >= datetime.combine(since, datetime.min.time()))
+        stmt = stmt.where(Tip.created_at >= inicio_do_dia(since))
     if until is not None:
-        stmt = stmt.where(Tip.created_at <= datetime.combine(until, datetime.max.time()))
+        stmt = stmt.where(Tip.created_at <= fim_do_dia(until))
 
     stmt = stmt.order_by(Tip.id.desc()).limit(limit).offset(offset)
     return list(session.scalars(stmt))

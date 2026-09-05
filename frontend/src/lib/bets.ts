@@ -95,18 +95,29 @@ export function formatPercent(value: number | string | null): string {
   return `${numero.format(Number(value ?? 0))}%`;
 }
 
+/**
+ * O fuso do board.
+ *
+ * A hora e o dia **nunca** saem do relógio de quem abre a página: a página
+ * pública é renderizada no servidor (`force-dynamic`), e o servidor roda em
+ * UTC — sem fixar o fuso, uma tip das 19h aparece como 22h para o assinante.
+ */
+export const FUSO = "America/Sao_Paulo";
+
 export function formatHora(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: FUSO,
   });
 }
 
 /** "Sábado 29" — o cabeçalho de cada dia da lista. */
 export function formatDiaLongo(iso: string): string {
   const data = new Date(iso);
-  const dia = data.toLocaleDateString("pt-BR", { weekday: "long" });
-  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${data.getDate()}`;
+  const dia = data.toLocaleDateString("pt-BR", { weekday: "long", timeZone: FUSO });
+  const numero = data.toLocaleDateString("pt-BR", { day: "numeric", timeZone: FUSO });
+  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${numero}`;
 }
 
 /** "Agosto de 2026" — o cabeçalho de cada mês. */
@@ -114,17 +125,36 @@ export function formatMesLongo(iso: string): string {
   const texto = new Date(iso).toLocaleDateString("pt-BR", {
     month: "long",
     year: "numeric",
+    timeZone: FUSO,
   });
   return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}`;
 }
 
-/** Chave de agrupamento estável, no fuso local (não em UTC). */
+/** Chave de agrupamento estável ("2026-08-29"), no fuso de São Paulo. */
 export function chaveDoDia(iso: string): string {
-  const d = new Date(iso);
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  return `${d.getFullYear()}-${mes}-${String(d.getDate()).padStart(2, "0")}`;
+  // "en-CA" já formata como AAAA-MM-DD — é a saída que o agrupamento espera.
+  return new Date(iso).toLocaleDateString("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: FUSO,
+  });
 }
 
 export function chaveDoMes(iso: string): string {
   return chaveDoDia(iso).slice(0, 7);
+}
+
+/** Hoje em São Paulo, como "AAAA-MM-DD" — a base dos filtros por período. */
+function hojeEmSaoPaulo(): string {
+  return chaveDoDia(new Date().toISOString());
+}
+
+/** "AAAA-MM-DD" de `dias` atrás em São Paulo, no formato que a API espera. */
+export function diaAtras(dias: number): string {
+  const [ano, mes, dia] = hojeEmSaoPaulo().split("-").map(Number);
+  // Meio-dia UTC: longe das bordas, o -dias nunca escorrega de dia.
+  const data = new Date(Date.UTC(ano, mes - 1, dia, 12));
+  data.setUTCDate(data.getUTCDate() - dias);
+  return data.toISOString().slice(0, 10);
 }

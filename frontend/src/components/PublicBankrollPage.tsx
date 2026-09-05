@@ -6,6 +6,7 @@ import {
   type ResultadoPublico,
 } from "@/components/FiltrosPublicos";
 import {
+  FUSO,
   ROTULO_STATUS,
   chaveDoDia,
   formatDiaLongo,
@@ -64,6 +65,7 @@ export function PublicBankrollPage({
             {new Date(banca.since).toLocaleDateString("pt-BR", {
               month: "long",
               year: "numeric",
+              timeZone: FUSO,
             })}
           </p>
         )}
